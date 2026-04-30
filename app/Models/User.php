@@ -21,10 +21,12 @@ class User extends Authenticatable
         'email',
         'photo',
         'airlink_locate_fisrt_entire',
+        'share_location',
     ];
 
     protected $casts = [
         'airlink_locate_fisrt_entire' => 'boolean',
+        'share_location' => 'boolean',
     ];
 
     public function getRememberTokenName()

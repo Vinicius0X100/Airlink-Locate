@@ -70,6 +70,7 @@
             data-me-name="{{ $meName }}"
             data-me-photo="{{ $mePhoto }}"
             data-me-initials="{{ $meInitials }}"
+            data-me-share-location="{{ auth()->user()?->share_location ? '1' : '0' }}"
             data-me-lat="{{ $meDevice?->last_lat }}"
             data-me-lng="{{ $meDevice?->last_lng }}"></div>
 
@@ -162,9 +163,10 @@
                     data-bs-target="#connectionsModal">
                     <i class="mdi mdi-account-multiple-outline"></i>
                 </button>
-                <button class="al-hub__dock-btn" type="button" aria-label="Alertas" data-bs-toggle="modal"
+                <button class="al-hub__dock-btn al-hub__dock-btn--notif" type="button" aria-label="Alertas" data-bs-toggle="modal"
                     data-bs-target="#alertsModal">
                     <i class="mdi mdi-bell-outline"></i>
+                    <span class="al-notif-badge d-none" id="alAlertsBadge">0</span>
                 </button>
             </div>
         </div>
@@ -205,7 +207,9 @@
                                             $other = $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
                                         @endphp
                                         @if ($other?->email)
-                                            <option value="{{ (string) $other->email }}">{{ (string) ($other->name ?? $other->email) }}</option>
+                                            <option value="{{ (string) $other->email }}" data-user-id="{{ (int) $other->id }}">
+                                                {{ (string) ($other->name ?? $other->email) }}
+                                            </option>
                                         @endif
                                     @endforeach
                                 </select>
@@ -288,7 +292,9 @@
                                             $other = $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
                                         @endphp
                                         @if ($other?->email)
-                                            <option value="{{ (string) $other->email }}">{{ (string) ($other->name ?? $other->email) }}</option>
+                                            <option value="{{ (string) $other->email }}" data-user-id="{{ (int) $other->id }}">
+                                                {{ (string) ($other->name ?? $other->email) }}
+                                            </option>
                                         @endif
                                     @endforeach
                                 </select>
@@ -331,6 +337,20 @@
                             @endforeach
                         </div>
                     @endif
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="groupMembersModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content al-card">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-semibold" id="groupMembersTitle">Membros</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="list-group list-group-flush" id="groupMembersList"></div>
                 </div>
             </div>
         </div>
@@ -479,9 +499,11 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body pt-0">
-                    <div class="text-secondary">
-                        Em breve: alertas de chegada/saída e notificações em tempo real.
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+                        <div class="text-secondary small" id="alAlertsSubtitle"></div>
+                        <button class="al-btn-secondary" type="button" id="alAlertsMarkAll">Marcar tudo como visto</button>
                     </div>
+                    <div class="list-group list-group-flush" id="alAlertsList"></div>
                 </div>
             </div>
         </div>
@@ -529,6 +551,16 @@
                             Você pode ajustar a permissão de localização no navegador/dispositivo. O Airlink Locate usa localização para mapa, atualizações e
                             alertas.
                         </div>
+                        <div class="d-flex align-items-center justify-content-between gap-3 mt-3">
+                            <div>
+                                <div class="text-white fw-semibold">Ocultar meus passos</div>
+                                <div class="text-secondary small">Pausa o compartilhamento em tempo real. As pessoas veem sua última localização.</div>
+                            </div>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" role="switch" id="alHideSteps"
+                                    {{ auth()->user()?->share_location ? '' : 'checked' }}>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="al-card al-card-strong p-3 p-md-4">
@@ -572,6 +604,8 @@
             const copyBtn = document.getElementById('copyConnectionInvite');
             const err = document.getElementById('connectionInviteError');
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const familyMemberIds = @json($families->mapWithKeys(fn ($f) => [(string) $f->id => $f->users->pluck('id')->map(fn ($id) => (string) $id)->values()])->all());
+            const circleMemberIds = @json($circles->mapWithKeys(fn ($c) => [(string) $c->id => $c->users->pluck('id')->map(fn ($id) => (string) $id)->values()])->all());
 
             const showError = (message) => {
                 if (!err) return;
@@ -712,6 +746,40 @@
                 };
             };
 
+            const buildConnectionOptions = (pick) => {
+                if (!pick) return [];
+                return [...pick.querySelectorAll('option')]
+                    .slice(1)
+                    .map((o) => ({
+                        value: String(o.value || '').trim(),
+                        label: String(o.textContent || '').trim(),
+                        userId: o.dataset.userId ? String(o.dataset.userId) : '',
+                    }))
+                    .filter((x) => x.value && x.userId);
+            };
+
+            const renderConnectionPick = (pick, all, excludedIds) => {
+                if (!pick) return;
+                const keep = new Set((excludedIds || []).map((x) => String(x)));
+                const current = String(pick.value || '').trim();
+
+                pick.innerHTML = '<option value="">Selecionar conexão…</option>';
+                all.forEach((it) => {
+                    if (!it.userId || keep.has(String(it.userId))) return;
+                    const opt = document.createElement('option');
+                    opt.value = it.value;
+                    opt.textContent = it.label;
+                    opt.dataset.userId = it.userId;
+                    pick.appendChild(opt);
+                });
+
+                if (current && [...pick.options].some((o) => o.value === current)) {
+                    pick.value = current;
+                } else {
+                    pick.value = '';
+                }
+            };
+
             const familyInvite = setupGroupInvite({
                 formId: 'familyInviteForm',
                 selectId: 'familyInviteFamilyId',
@@ -811,8 +879,222 @@
                 pick.addEventListener('change', () => apply());
             };
 
+            const familyPick = document.getElementById('familyInviteConnectionPick');
+            const circlePick = document.getElementById('circleInviteConnectionPick');
+            const allFamilyConnections = buildConnectionOptions(familyPick);
+            const allCircleConnections = buildConnectionOptions(circlePick);
+
+            const familyIdSelect = document.getElementById('familyInviteFamilyId');
+            const circleIdSelect = document.getElementById('circleInviteCircleId');
+
+            const updateFamilyPick = () => {
+                const id = familyIdSelect ? String(familyIdSelect.value || '') : '';
+                renderConnectionPick(familyPick, allFamilyConnections, familyMemberIds?.[id] || []);
+            };
+
+            const updateCirclePick = () => {
+                const id = circleIdSelect ? String(circleIdSelect.value || '') : '';
+                renderConnectionPick(circlePick, allCircleConnections, circleMemberIds?.[id] || []);
+            };
+
+            familyIdSelect?.addEventListener('change', () => updateFamilyPick());
+            circleIdSelect?.addEventListener('change', () => updateCirclePick());
+
+            updateFamilyPick();
+            updateCirclePick();
+
             bindConnectionPicker({ pickId: 'familyInviteConnectionPick', useId: 'familyInviteUseConnection', formId: 'familyInviteForm' });
             bindConnectionPicker({ pickId: 'circleInviteConnectionPick', useId: 'circleInviteUseConnection', formId: 'circleInviteForm' });
+
+            const hideStepsToggle = document.getElementById('alHideSteps');
+            hideStepsToggle?.addEventListener('change', async () => {
+                const hide = Boolean(hideStepsToggle.checked);
+                const share = !hide;
+
+                try {
+                    await fetch('{{ route('me.share_location') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ share_location: share }),
+                    });
+                } catch {
+                }
+
+                window.location.reload();
+            });
+
+            const alertsBadge = document.getElementById('alAlertsBadge');
+            const alertsList = document.getElementById('alAlertsList');
+            const alertsSubtitle = document.getElementById('alAlertsSubtitle');
+            const alertsMarkAll = document.getElementById('alAlertsMarkAll');
+            let lastUnseen = 0;
+
+            const playAlertSound = () => {
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const o = ctx.createOscillator();
+                    const g = ctx.createGain();
+                    o.type = 'sine';
+                    o.frequency.value = 880;
+                    g.gain.value = 0.0001;
+                    o.connect(g);
+                    g.connect(ctx.destination);
+                    o.start();
+                    g.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+                    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+                    o.stop(ctx.currentTime + 0.2);
+                    window.setTimeout(() => ctx.close().catch(() => {}), 240);
+                } catch {
+                }
+            };
+
+            const setBadge = (count) => {
+                const n = Number(count || 0);
+                if (!alertsBadge) return;
+                if (n > 0) {
+                    alertsBadge.textContent = String(n);
+                    alertsBadge.classList.remove('d-none');
+                } else {
+                    alertsBadge.textContent = '0';
+                    alertsBadge.classList.add('d-none');
+                }
+            };
+
+            const renderAlerts = (data) => {
+                const list = Array.isArray(data?.alerts) ? data.alerts : [];
+                const unseen = Number(data?.unseen_count || 0);
+
+                if (alertsSubtitle) {
+                    alertsSubtitle.textContent = unseen > 0 ? `${unseen} não visualizada(s)` : 'Nenhuma notificação pendente';
+                }
+                setBadge(unseen);
+
+                if (!alertsList) return;
+                alertsList.innerHTML = '';
+
+                if (!list.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'text-secondary';
+                    empty.textContent = 'Nenhuma notificação ainda.';
+                    alertsList.appendChild(empty);
+                    return;
+                }
+
+                list.forEach((a) => {
+                    const item = document.createElement('div');
+                    item.className = 'list-group-item bg-transparent text-white border-secondary border-opacity-25';
+
+                    const avatar = document.createElement('div');
+                    avatar.className = 'al-profile-circle';
+                    avatar.style.width = '44px';
+                    avatar.style.height = '44px';
+                    avatar.style.flex = '0 0 44px';
+
+                    const photo = a?.actor_photo ? String(a.actor_photo) : '';
+                    const initials = String(a?.actor_initials || '').slice(0, 2).toUpperCase();
+                    if (photo) {
+                        avatar.innerHTML = `<img src="${photo}" alt="" class="al-profile-circle__img">`;
+                    } else {
+                        avatar.innerHTML = `<span class="al-profile-circle__initials">${initials}</span>`;
+                    }
+
+                    const title = document.createElement('div');
+                    title.className = 'fw-semibold';
+                    title.textContent = String(a?.actor_name || 'Usuário');
+
+                    const msg = document.createElement('div');
+                    msg.className = 'text-secondary small';
+                    msg.textContent = String(a?.message || '');
+
+                    const date = document.createElement('div');
+                    date.className = 'text-secondary small';
+                    date.textContent = String(a?.date || '');
+
+                    const meta = document.createElement('div');
+                    meta.className = 'd-flex align-items-start justify-content-between gap-3';
+
+                    const left = document.createElement('div');
+                    left.className = 'd-flex align-items-center gap-3';
+                    left.appendChild(avatar);
+
+                    const text = document.createElement('div');
+                    text.appendChild(title);
+                    text.appendChild(msg);
+                    left.appendChild(text);
+
+                    const right = document.createElement('div');
+                    right.className = 'text-end';
+                    right.appendChild(date);
+
+                    if (!a?.seen) {
+                        const dot = document.createElement('div');
+                        dot.style.width = '8px';
+                        dot.style.height = '8px';
+                        dot.style.borderRadius = '999px';
+                        dot.style.background = '#ff3b30';
+                        dot.style.marginLeft = 'auto';
+                        dot.style.marginTop = '6px';
+                        right.appendChild(dot);
+                    }
+
+                    meta.appendChild(left);
+                    meta.appendChild(right);
+                    item.appendChild(meta);
+                    alertsList.appendChild(item);
+                });
+            };
+
+            const fetchAlerts = async ({ silentSound = false } = {}) => {
+                try {
+                    const res = await fetch('{{ route('alerts.index') }}', {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'same-origin',
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) return;
+
+                    const unseen = Number(data?.unseen_count || 0);
+                    if (!silentSound && unseen > lastUnseen) {
+                        playAlertSound();
+                    }
+                    lastUnseen = unseen;
+
+                    renderAlerts(data);
+                } catch {
+                }
+            };
+
+            alertsMarkAll?.addEventListener('click', async () => {
+                try {
+                    const res = await fetch('{{ route('alerts.mark_all_seen') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({}),
+                    });
+                    if (!res.ok) return;
+                    lastUnseen = 0;
+                    await fetchAlerts({ silentSound: true });
+                } catch {
+                }
+            });
+
+            document.getElementById('alertsModal')?.addEventListener('shown.bs.modal', () => {
+                fetchAlerts({ silentSound: true });
+            });
+
+            fetchAlerts({ silentSound: true });
+            window.setInterval(() => fetchAlerts(), 5000);
 
             const setButtonLoading = (btn, loading) => {
                 if (!btn) return;

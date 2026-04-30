@@ -98,6 +98,7 @@ const bootMapbox = () => {
   const meName = mapEl.dataset.meName || '';
   const mePhoto = mapEl.dataset.mePhoto || '';
   const meInitials = mapEl.dataset.meInitials || '';
+  const meShareLocation = mapEl.dataset.meShareLocation === '1';
   const meLat = mapEl.dataset.meLat ? Number(mapEl.dataset.meLat) : null;
   const meLng = mapEl.dataset.meLng ? Number(mapEl.dataset.meLng) : null;
   const meMarkerId = meUserId ? `me:${meUserId}` : '';
@@ -142,6 +143,9 @@ const bootMapbox = () => {
   const detailMetaEl = document.getElementById('alMapDetailMeta');
   const detailActionsEl = document.getElementById('alMapDetailActions');
   const detailCloseEl = document.getElementById('alMapDetailClose');
+  const groupMembersModalEl = document.getElementById('groupMembersModal');
+  const groupMembersTitleEl = document.getElementById('groupMembersTitle');
+  const groupMembersListEl = document.getElementById('groupMembersList');
 
   const focusSourceId = 'al-safeplace-focus';
   const focusFillId = 'al-safeplace-focus-fill';
@@ -436,6 +440,96 @@ const bootMapbox = () => {
 
     fitToPoints(points);
     showDetail();
+  };
+
+  const openGroupMembersModal = ({ kind, name, memberIds }) => {
+    const title = String(name || '').trim() || (kind === 'circle' ? 'Círculo' : 'Família');
+    const ids = Array.isArray(memberIds) ? memberIds.map((x) => String(x)).filter(Boolean) : [];
+
+    if (!groupMembersModalEl || !groupMembersListEl) {
+      openGroupDetail({ kind, name: title, memberIds: ids });
+      return;
+    }
+
+    if (groupMembersTitleEl) groupMembersTitleEl.textContent = title;
+    clearEl(groupMembersListEl);
+
+    const byUserId = new Map(lastDevices.map((d) => [d?.user_id ? String(d.user_id) : '', d]));
+    const items = ids
+      .map((uid) => {
+        const d = byUserId.get(String(uid));
+        if (!d) return { userId: String(uid), name: 'Usuário', d: null };
+        return { userId: String(uid), name: String(d?.name || 'Usuário').trim() || 'Usuário', d };
+      })
+      .filter((x) => x.userId);
+
+    const points = [];
+
+    items.forEach((it) => {
+      const d = it.d;
+      const lat = Number(d?.lat);
+      const lng = Number(d?.lng);
+      const lastSeen = formatLastSeen(d?.last_seen_at);
+      const isOnline = Boolean(d?.is_online);
+
+      const row = document.createElement('div');
+      row.className = 'list-group-item bg-transparent text-white border-secondary border-opacity-25';
+
+      const left = document.createElement('div');
+      left.className = 'flex-grow-1 min-w-0';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'fw-semibold text-truncate';
+      nameEl.textContent = it.name;
+
+      const sub = document.createElement('div');
+      sub.className = 'text-secondary small text-truncate';
+      sub.textContent = isOnline ? 'Online agora' : lastSeen ? `Última localização: ${lastSeen}` : 'Sem localização';
+
+      left.appendChild(nameEl);
+      left.appendChild(sub);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'al-btn-secondary';
+      btn.textContent = 'Ir';
+
+      const canGo = Number.isFinite(lat) && Number.isFinite(lng);
+      if (!canGo) {
+        btn.setAttribute('disabled', 'disabled');
+      } else {
+        points.push({ lng, lat });
+        btn.addEventListener('click', () => {
+          flyToLngLat(lng, lat, 16);
+          openPersonDetail(d, { fly: false });
+          try {
+            window.bootstrap?.Modal?.getOrCreateInstance(groupMembersModalEl)?.hide();
+          } catch {
+          }
+        });
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'd-flex align-items-center justify-content-between gap-3';
+      wrap.appendChild(left);
+      wrap.appendChild(btn);
+      row.appendChild(wrap);
+      groupMembersListEl.appendChild(row);
+    });
+
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'text-secondary';
+      empty.textContent = 'Nenhuma pessoa encontrada.';
+      groupMembersListEl.appendChild(empty);
+    }
+
+    try {
+      window.bootstrap?.Modal?.getOrCreateInstance(groupMembersModalEl)?.show();
+    } catch {
+    }
+
+    if (points.length) fitToPoints(points);
   };
 
   const resolveDeviceByMarkerId = (markerId) => {
@@ -1337,6 +1431,7 @@ const bootMapbox = () => {
   const attachLocationReporter = () => {
     if (!navigator.geolocation) return;
     if (!meUserId) return;
+    if (!meShareLocation) return;
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const allowed = localStorage.getItem('airlink_location_allowed') === '1';
@@ -1416,7 +1511,7 @@ const bootMapbox = () => {
           window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
         } catch {
         }
-        openGroupDetail({ kind: 'family', name, memberIds });
+        openGroupMembersModal({ kind: 'family', name, memberIds });
         return;
       }
 
@@ -1429,7 +1524,7 @@ const bootMapbox = () => {
           window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
         } catch {
         }
-        openGroupDetail({ kind: 'circle', name, memberIds });
+        openGroupMembersModal({ kind: 'circle', name, memberIds });
         return;
       }
 

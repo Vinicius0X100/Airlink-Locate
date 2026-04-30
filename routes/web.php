@@ -6,6 +6,7 @@ use App\Http\Controllers\Web\LegalController;
 use App\Http\Controllers\Web\LoginController;
 use App\Models\Circle;
 use App\Models\CircleMember;
+use App\Models\Alert;
 use App\Models\Device;
 use App\Models\Family;
 use App\Models\FamilyMember;
@@ -35,6 +36,73 @@ Route::get('/dashboard', function () {
 Route::middleware('auth')->group(function () {
     Route::get('/api/devices/locations', [LocationController::class, 'devicesLocations'])->name('devices.locations');
 
+    Route::get('/alerts', function (Request $request) {
+        $user = $request->user();
+
+        $alerts = Alert::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+
+        $unseen = Alert::query()
+            ->where('user_id', $user->id)
+            ->whereNull('seen_at')
+            ->count();
+
+        return response()->json([
+            'unseen_count' => (int) $unseen,
+            'alerts' => $alerts->map(fn (Alert $a) => [
+                'id' => (int) $a->id,
+                'type' => (string) $a->type,
+                'message' => (string) $a->message,
+                'actor_name' => (string) $a->actor_name,
+                'actor_initials' => (string) $a->actor_initials,
+                'actor_photo' => $a->actor_photo ? (string) $a->actor_photo : null,
+                'date' => $a->created_at ? $a->created_at->format('d/m/y') : now()->format('d/m/y'),
+                'seen' => (bool) $a->seen_at,
+            ])->values(),
+        ]);
+    })->name('alerts.index');
+
+    Route::post('/alerts/mark-all-seen', function (Request $request) {
+        $user = $request->user();
+
+        $count = Alert::query()
+            ->where('user_id', $user->id)
+            ->whereNull('seen_at')
+            ->update(['seen_at' => now()]);
+
+        return response()->json([
+            'ok' => true,
+            'marked' => (int) $count,
+        ]);
+    })->name('alerts.mark_all_seen');
+
+    Route::post('/me/share-location', function (Request $request) {
+        $data = $request->validate([
+            'share_location' => ['required', 'boolean'],
+        ]);
+
+        $user = $request->user();
+        $share = (bool) $data['share_location'];
+
+        $user->forceFill([
+            'share_location' => $share,
+        ])->save();
+
+        if (! $share) {
+            Device::query()
+                ->where('user_id', $user->id)
+                ->update(['is_online' => false]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'share_location' => $share,
+        ]);
+    })->name('me.share_location');
+
     Route::post('/location/ping', function (Request $request) {
         $data = $request->validate([
             'lat' => ['required', 'numeric', 'between:-90,90'],
@@ -42,6 +110,17 @@ Route::middleware('auth')->group(function () {
         ]);
 
         $user = $request->user();
+
+        if (! $user->share_location) {
+            Device::query()
+                ->where('user_id', $user->id)
+                ->update(['is_online' => false]);
+
+            return response()->json([
+                'ok' => true,
+                'paused' => true,
+            ]);
+        }
 
         $device = Device::query()->updateOrCreate(
             [

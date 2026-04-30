@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\Alert;
 use App\Models\Circle;
 use App\Models\CircleMember;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\UserConnection;
+use App\Services\SacratechAuthService;
 use App\Services\InvitationService;
 use Illuminate\Http\Request;
 
@@ -30,6 +32,77 @@ class InviteController extends Controller
                 'expected_email' => $invitation->invitee_email ? mb_strtolower((string) $invitation->invitee_email) : null,
                 'current_email' => $request->user()?->email ? mb_strtolower((string) $request->user()->email) : null,
             ], 403);
+    }
+
+    private function makeInitials(string $name): string
+    {
+        $parts = array_values(array_filter(preg_split('/\s+/', trim($name)) ?: []));
+        if (count($parts) >= 2) {
+            return mb_strtoupper(mb_substr($parts[0], 0, 1).mb_substr($parts[count($parts) - 1], 0, 1));
+        }
+        if (count($parts) === 1) {
+            return mb_strtoupper(mb_substr($parts[0], 0, 1));
+        }
+
+        return '';
+    }
+
+    private function createAcceptedAlert(Request $request, \App\Models\Invitation $invitation): void
+    {
+        $actor = $request->user();
+        if (! $actor) {
+            return;
+        }
+
+        $actorName = (string) ($actor->name ?? 'Usuário');
+        if ($actor->sacratech_user_id) {
+            $s = app(SacratechAuthService::class)->fetchUserById((int) $actor->sacratech_user_id);
+            if ($s) {
+                $first = trim((string) ($s->nome ?? ''));
+                $last = trim((string) ($s->sobrenome ?? ''));
+                $full = trim($first.' '.$last);
+                if ($full !== '') {
+                    $actorName = $full;
+                }
+            }
+        }
+
+        $photoRaw = is_string($actor->photo) ? trim((string) $actor->photo) : '';
+        $photo = null;
+        if ($photoRaw !== '') {
+            $photo = preg_match('/^https?:\/\//i', $photoRaw) === 1 ? $photoRaw : asset('storage/'.$photoRaw);
+        }
+
+        $type = 'connection_accepted';
+        $groupId = null;
+        $groupName = null;
+        $message = 'Aceitou sua conexão.';
+
+        if ($invitation->type === 'family') {
+            $type = 'family_accepted';
+            $groupId = (int) $invitation->family_id;
+            $groupName = $invitation->family?->name ? (string) $invitation->family->name : null;
+            $message = 'Aceitou entrar na família'.($groupName ? ' ('.$groupName.')' : '.');
+        } elseif ($invitation->type === 'circle') {
+            $type = 'circle_accepted';
+            $groupId = (int) $invitation->circle_id;
+            $groupName = $invitation->circle?->name ? (string) $invitation->circle->name : null;
+            $message = 'Aceitou entrar para o círculo'.($groupName ? ' ('.$groupName.')' : '.');
+        }
+
+        Alert::query()->create([
+            'user_id' => (int) $invitation->inviter_user_id,
+            'actor_user_id' => (int) $actor->id,
+            'type' => $type,
+            'message' => $message,
+            'actor_name' => $actorName,
+            'actor_initials' => $this->makeInitials($actorName),
+            'actor_photo' => $photo,
+            'group_id' => $groupId,
+            'group_name' => $groupName,
+            'created_at' => now(),
+            'seen_at' => null,
+        ]);
     }
 
     public function show(Request $request, string $token)
@@ -130,6 +203,8 @@ class InviteController extends Controller
             'status' => 'accepted',
             'responded_at' => now(),
         ]);
+
+        $this->createAcceptedAlert($request, $invitation->fresh()->load(['family', 'circle']));
 
         return redirect()->route('dashboard');
     }

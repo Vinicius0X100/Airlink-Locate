@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Alert;
 use App\Models\Circle;
 use App\Models\CircleMember;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\Invitation;
 use App\Models\UserConnection;
+use App\Services\SacratechAuthService;
 use App\Services\InvitationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -197,6 +199,65 @@ class InvitationController extends Controller
             'invitee_email' => $email,
             'status' => 'accepted',
             'responded_at' => now(),
+        ]);
+
+        $actorName = (string) ($user->name ?? 'Usuário');
+        if ($user->sacratech_user_id) {
+            $s = app(SacratechAuthService::class)->fetchUserById((int) $user->sacratech_user_id);
+            if ($s) {
+                $first = trim((string) ($s->nome ?? ''));
+                $last = trim((string) ($s->sobrenome ?? ''));
+                $full = trim($first.' '.$last);
+                if ($full !== '') {
+                    $actorName = $full;
+                }
+            }
+        }
+
+        $parts = array_values(array_filter(preg_split('/\s+/', trim($actorName)) ?: []));
+        if (count($parts) >= 2) {
+            $initials = mb_strtoupper(mb_substr($parts[0], 0, 1).mb_substr($parts[count($parts) - 1], 0, 1));
+        } elseif (count($parts) === 1) {
+            $initials = mb_strtoupper(mb_substr($parts[0], 0, 1));
+        } else {
+            $initials = '';
+        }
+
+        $photoRaw = is_string($user->photo) ? trim((string) $user->photo) : '';
+        $photo = null;
+        if ($photoRaw !== '') {
+            $photo = preg_match('/^https?:\/\//i', $photoRaw) === 1 ? $photoRaw : asset('storage/'.$photoRaw);
+        }
+
+        $type = 'connection_accepted';
+        $groupId = null;
+        $groupName = null;
+        $message = 'Aceitou sua conexão.';
+
+        if ($invitation->type === 'family') {
+            $type = 'family_accepted';
+            $groupId = (int) $invitation->family_id;
+            $groupName = $invitation->family?->name ? (string) $invitation->family->name : null;
+            $message = 'Aceitou entrar na família'.($groupName ? ' ('.$groupName.')' : '.');
+        } elseif ($invitation->type === 'circle') {
+            $type = 'circle_accepted';
+            $groupId = (int) $invitation->circle_id;
+            $groupName = $invitation->circle?->name ? (string) $invitation->circle->name : null;
+            $message = 'Aceitou entrar para o círculo'.($groupName ? ' ('.$groupName.')' : '.');
+        }
+
+        Alert::query()->create([
+            'user_id' => (int) $invitation->inviter_user_id,
+            'actor_user_id' => (int) $user->id,
+            'type' => $type,
+            'message' => $message,
+            'actor_name' => $actorName,
+            'actor_initials' => $initials,
+            'actor_photo' => $photo,
+            'group_id' => $groupId,
+            'group_name' => $groupName,
+            'created_at' => now(),
+            'seen_at' => null,
         ]);
 
         return response()->json([

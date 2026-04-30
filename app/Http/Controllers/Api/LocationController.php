@@ -99,6 +99,17 @@ class LocationController extends Controller
 
         $user = $request->user();
 
+        if (! $user->share_location) {
+            Device::query()
+                ->where('user_id', $user->id)
+                ->update(['is_online' => false]);
+
+            return response()->json([
+                'ok' => true,
+                'paused' => true,
+            ]);
+        }
+
         $device = Device::query()
             ->whereKey((int) $data['device_id'])
             ->where('user_id', $user->id)
