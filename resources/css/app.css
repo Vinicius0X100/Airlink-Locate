@@ -1053,6 +1053,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 360px;
 }
 
 .al-place-addr--expanded {
