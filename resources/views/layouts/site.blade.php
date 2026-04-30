@@ -33,7 +33,7 @@
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @else
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
-                integrity="sha384-f/E+5h1N2M4AmoPXqd6jO7Edd7MrTU8hzhVDLWkiyAsQpq4Y4pfVyI4R1fSvRTkd" crossorigin="anonymous">
+                integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
             <style>
                 :root {
                     --al-bg: #09090b;
