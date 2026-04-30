@@ -856,7 +856,7 @@ body {
   position: absolute;
   left: 50%;
   bottom: 16px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   display: inline-flex;
   gap: 6px;
   border-radius: 999px;

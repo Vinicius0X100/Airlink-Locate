@@ -196,6 +196,24 @@
                                 <input class="form-control al-input" type="email" name="email" placeholder="Email Sacratech iD"
                                     {{ $families->isEmpty() ? 'disabled' : '' }} required>
                             </div>
+                            <div class="d-flex gap-2">
+                                <select class="form-select al-input" id="familyInviteConnectionPick"
+                                    {{ $connections->isEmpty() ? 'disabled' : '' }}>
+                                    <option value="">Selecionar conexão…</option>
+                                    @foreach ($connections as $c)
+                                        @php
+                                            $other = $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
+                                        @endphp
+                                        @if ($other?->email)
+                                            <option value="{{ (string) $other->email }}">{{ (string) ($other->name ?? $other->email) }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                                <button class="al-btn-secondary" type="button" id="familyInviteUseConnection"
+                                    {{ $connections->isEmpty() ? 'disabled' : '' }}>
+                                    Usar
+                                </button>
+                            </div>
                             <button class="al-btn-primary" type="submit" id="familyInviteSubmit" {{ $families->isEmpty() ? 'disabled' : '' }}>
                                 Gerar
                             </button>
@@ -260,6 +278,24 @@
                                 </select>
                                 <input class="form-control al-input" type="email" name="email" placeholder="Email Sacratech iD"
                                     {{ $circles->isEmpty() ? 'disabled' : '' }} required>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <select class="form-select al-input" id="circleInviteConnectionPick"
+                                    {{ $connections->isEmpty() ? 'disabled' : '' }}>
+                                    <option value="">Selecionar conexão…</option>
+                                    @foreach ($connections as $c)
+                                        @php
+                                            $other = $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
+                                        @endphp
+                                        @if ($other?->email)
+                                            <option value="{{ (string) $other->email }}">{{ (string) ($other->name ?? $other->email) }}</option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                                <button class="al-btn-secondary" type="button" id="circleInviteUseConnection"
+                                    {{ $connections->isEmpty() ? 'disabled' : '' }}>
+                                    Usar
+                                </button>
                             </div>
                             <button class="al-btn-primary" type="submit" id="circleInviteSubmit" {{ $circles->isEmpty() ? 'disabled' : '' }}>
                                 Gerar
@@ -331,6 +367,7 @@
                                 @php
                                     $other = $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
                                     $otherName = $other?->name ?? 'Usuário';
+                                    $otherEmail = $other?->email ?? '';
                                 @endphp
                                 <div class="list-group-item bg-transparent text-white border-secondary border-opacity-25">
                                     <div class="d-flex align-items-center justify-content-between gap-3">
@@ -340,9 +377,16 @@
                                                 Compartilhamento: {{ $c->share_location ? 'ativado' : 'desativado' }}
                                             </div>
                                         </div>
-                                        <button class="al-btn-secondary" type="button">
-                                            Detalhes
-                                        </button>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <button class="al-btn-secondary" type="button" data-al-invite-kind="family"
+                                                data-al-invite-email="{{ (string) $otherEmail }}" {{ $otherEmail === '' ? 'disabled' : '' }}>
+                                                Família
+                                            </button>
+                                            <button class="al-btn-secondary" type="button" data-al-invite-kind="circle"
+                                                data-al-invite-email="{{ (string) $otherEmail }}" {{ $otherEmail === '' ? 'disabled' : '' }}>
+                                                Círculo
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             @endforeach
@@ -687,6 +731,88 @@
                 copyId: 'copyCircleInvite',
                 endpointForId: (id) => `{{ url('/circles') }}/${encodeURIComponent(id)}/invite`,
             });
+
+            const openInviteForEmail = ({ kind, email }) => {
+                const safeEmail = String(email || '').trim();
+                if (!safeEmail) return;
+
+                const openModal = (id) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    window.bootstrap?.Modal?.getOrCreateInstance(el)?.show();
+                };
+
+                const closeModal = (id) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    window.bootstrap?.Modal?.getOrCreateInstance(el)?.hide();
+                };
+
+                closeModal('connectionsModal');
+
+                if (kind === 'family') {
+                    openModal('familiesModal');
+                    window.setTimeout(() => {
+                        const form = document.getElementById('familyInviteForm');
+                        const input = form?.querySelector('input[name="email"]');
+                        if (input) {
+                            input.value = safeEmail;
+                            input.focus();
+                            input.select?.();
+                        }
+                        form?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+                    }, 120);
+                }
+
+                if (kind === 'circle') {
+                    openModal('circlesModal');
+                    window.setTimeout(() => {
+                        const form = document.getElementById('circleInviteForm');
+                        const input = form?.querySelector('input[name="email"]');
+                        if (input) {
+                            input.value = safeEmail;
+                            input.focus();
+                            input.select?.();
+                        }
+                        form?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+                    }, 120);
+                }
+            };
+
+            document.addEventListener('click', (e) => {
+                const btn = e.target?.closest?.('[data-al-invite-kind]');
+                if (!btn) return;
+                e.preventDefault();
+                const kind = btn.dataset.alInviteKind ? String(btn.dataset.alInviteKind) : '';
+                const email = btn.dataset.alInviteEmail ? String(btn.dataset.alInviteEmail) : '';
+                openInviteForEmail({ kind, email });
+            });
+
+            const bindConnectionPicker = ({ pickId, useId, formId }) => {
+                const pick = document.getElementById(pickId);
+                const use = document.getElementById(useId);
+                const form = document.getElementById(formId);
+                const input = form?.querySelector?.('input[name="email"]');
+                if (!pick || !form || !input) return;
+
+                const apply = () => {
+                    const email = String(pick.value || '').trim();
+                    if (!email) return;
+                    input.value = email;
+                    input.focus?.();
+                    input.select?.();
+                };
+
+                use?.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    apply();
+                });
+
+                pick.addEventListener('change', () => apply());
+            };
+
+            bindConnectionPicker({ pickId: 'familyInviteConnectionPick', useId: 'familyInviteUseConnection', formId: 'familyInviteForm' });
+            bindConnectionPicker({ pickId: 'circleInviteConnectionPick', useId: 'circleInviteUseConnection', formId: 'circleInviteForm' });
 
             const setButtonLoading = (btn, loading) => {
                 if (!btn) return;

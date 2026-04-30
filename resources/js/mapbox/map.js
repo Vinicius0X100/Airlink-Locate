@@ -744,8 +744,6 @@ const bootMapbox = () => {
       const lng = Number(d?.lng);
 
       if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      alive.add(String(id));
-
       const isMe = meUserId !== '' && userId !== '' && userId === meUserId;
       const payload = {
         label: name,
@@ -754,8 +752,26 @@ const bootMapbox = () => {
         isMe,
       };
 
-      if (!markers[String(id)]) addMarker(lat, lng, payload, String(id));
-      else updateMarker(String(id), lat, lng);
+      if (isMe && meMarkerId) {
+        alive.add(meMarkerId);
+        setMeMarker(lat, lng);
+
+        const deviceMarkerId = String(id);
+        if (deviceMarkerId !== meMarkerId && markers[deviceMarkerId]) {
+          try {
+            markers[deviceMarkerId].marker.remove();
+          } catch {
+          }
+          delete markers[deviceMarkerId];
+        }
+        return;
+      }
+
+      const markerId = String(id);
+      alive.add(markerId);
+
+      if (!markers[markerId]) addMarker(lat, lng, payload, markerId);
+      else updateMarker(markerId, lat, lng);
     });
 
     if (meMarkerId && markers[meMarkerId]) {
@@ -1197,7 +1213,7 @@ const bootMapbox = () => {
     const search = async () => {
       const q = (input.value || '').trim();
       if (q.length < 1) return showSheet();
-      if (q.length < 3) return;
+      const nq = normalizeText(q);
 
       saveRecentSearch(q);
 
@@ -1219,7 +1235,7 @@ const bootMapbox = () => {
           };
         })
         .filter(Boolean)
-        .filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
+        .filter((p) => normalizeText(p.name).includes(nq))
         .slice(0, 5);
 
       const savedPlaces = safePlaces
@@ -1230,8 +1246,14 @@ const bootMapbox = () => {
           lng: Number(p?.lng),
         }))
         .filter((p) => p.id && p.name && Number.isFinite(p.lat) && Number.isFinite(p.lng))
-        .filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))
+        .filter((p) => normalizeText(p.name).includes(nq))
         .slice(0, 4);
+
+      if (q.length < 3) {
+        hub?.classList.add('al-hub--searching');
+        render({ people, places: [], savedPlaces, recentSearches: [], recentItems: [], quickPeople: [], quickSafePlaces: [] });
+        return;
+      }
 
       const proximity = map.getCenter();
       const url = new URL(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json`);
@@ -1310,6 +1332,68 @@ const bootMapbox = () => {
     const btn = document.getElementById('alFocusMe');
     if (!btn) return;
     btn.addEventListener('click', () => focusMe());
+  };
+
+  const attachLocationReporter = () => {
+    if (!navigator.geolocation) return;
+    if (!meUserId) return;
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const allowed = localStorage.getItem('airlink_location_allowed') === '1';
+    if (!allowed) return;
+
+    let lastSentAt = 0;
+    let lastKey = '';
+
+    const send = async (lat, lng) => {
+      if (!csrf) return;
+
+      try {
+        await fetch('/location/ping', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': csrf,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({ lat, lng }),
+        });
+      } catch {
+      }
+    };
+
+    const onPos = (pos) => {
+      const lat = Number(pos?.coords?.latitude);
+      const lng = Number(pos?.coords?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      setMeMarker(lat, lng);
+
+      const now = Date.now();
+      if (now - lastSentAt < 5000) return;
+
+      const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+      if (key === lastKey && now - lastSentAt < 15000) return;
+      lastKey = key;
+      lastSentAt = now;
+
+      send(lat, lng);
+    };
+
+    try {
+      navigator.geolocation.getCurrentPosition(onPos, () => {}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+      navigator.geolocation.watchPosition(onPos, () => {}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+    } catch {
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        navigator.geolocation.getCurrentPosition(onPos, () => {}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+      } catch {
+      }
+    });
   };
 
   const attachDashboardActions = () => {
@@ -1640,6 +1724,7 @@ const bootMapbox = () => {
     upsertMeMarker();
     attachSearch();
     attachNavbarFocus();
+    attachLocationReporter();
     attachDashboardActions();
     attachPickSafePlace();
     attachSafePlaceBuilder();
