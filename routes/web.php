@@ -1,0 +1,213 @@
+<?php
+
+use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Web\InviteController;
+use App\Http\Controllers\Web\LegalController;
+use App\Http\Controllers\Web\LoginController;
+use App\Models\Circle;
+use App\Models\CircleMember;
+use App\Models\Family;
+use App\Models\FamilyMember;
+use App\Models\SafePlace;
+use App\Services\InvitationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('guest')->group(function () {
+    Route::get('/', fn () => view('pages.landing'))->name('landing');
+    Route::get('/sobre', fn () => view('pages.sobre'));
+    Route::get('/como-funciona', fn () => view('pages.como-funciona'));
+
+    Route::get('/login', [LoginController::class, 'show'])->name('login');
+    Route::post('/login', [LoginController::class, 'authenticate'])->middleware('throttle:login')->name('login.perform');
+});
+Route::post('/logout', [LoginController::class, 'logout'])->middleware('auth')->name('logout');
+
+Route::get('/termos-de-uso', [LegalController::class, 'terms'])->name('terms');
+Route::get('/privacidade', [LegalController::class, 'privacy'])->name('privacy');
+
+Route::get('/dashboard', function () {
+    return view('app.dashboard');
+})->middleware('auth')->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/api/devices/locations', [LocationController::class, 'devicesLocations'])->name('devices.locations');
+
+    Route::post('/me/photo', function (Request $request) {
+        $data = $request->validate([
+            'photo' => ['required', 'file', 'image', 'max:2048'],
+        ]);
+
+        $path = $data['photo']->storePublicly('user-photos', 'public');
+
+        $request->user()->forceFill([
+            'photo' => $path,
+        ])->save();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'photo' => $path,
+                'url' => asset('storage/'.$path),
+            ]);
+        }
+
+        return back();
+    })->name('me.photo');
+
+    Route::get('/safe-places', function (Request $request) {
+        $places = SafePlace::query()
+            ->where('user_id', $request->user()->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (SafePlace $p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'icon' => $p->icon,
+                'address' => $p->address,
+                'lat' => (float) $p->latitude,
+                'lng' => (float) $p->longitude,
+                'radius' => (int) $p->radius,
+            ])
+            ->values();
+
+        return response()->json([
+            'safe_places' => $places,
+        ]);
+    })->name('safe_places.index');
+
+    Route::post('/safe-places', function (Request $request) {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'icon' => ['nullable', 'string', 'max:40'],
+            'address' => ['required', 'string', 'max:255'],
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+            'radius' => ['required', 'integer', 'min:25', 'max:2000'],
+        ]);
+
+        $place = SafePlace::query()->create([
+            'user_id' => $request->user()->id,
+            'name' => $data['name'],
+            'icon' => $data['icon'] ?? null,
+            'address' => $data['address'],
+            'latitude' => (float) $data['lat'],
+            'longitude' => (float) $data['lng'],
+            'radius' => (int) $data['radius'],
+            'created_at' => now(),
+        ]);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'safe_place' => [
+                    'id' => $place->id,
+                    'name' => $place->name,
+                    'icon' => $place->icon,
+                    'address' => $place->address,
+                    'lat' => (float) $place->latitude,
+                    'lng' => (float) $place->longitude,
+                    'radius' => (int) $place->radius,
+                ],
+            ], 201);
+        }
+
+        return back();
+    })->name('safe_places.store');
+
+    Route::post('/families', function (Request $request) {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+        ]);
+
+        $family = Family::query()->create([
+            'name' => $data['name'],
+            'owner_id' => $request->user()->id,
+        ]);
+
+        FamilyMember::query()->updateOrCreate(
+            [
+                'family_id' => $family->id,
+                'user_id' => $request->user()->id,
+            ],
+            [
+                'role' => 'owner',
+            ],
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'family' => [
+                    'id' => $family->id,
+                    'name' => $family->name,
+                    'users_count' => 1,
+                ],
+            ], 201);
+        }
+
+        return back();
+    })->name('families.store');
+
+    Route::post('/circles', function (Request $request) {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+        ]);
+
+        $circle = Circle::query()->create([
+            'name' => $data['name'],
+            'owner_id' => $request->user()->id,
+        ]);
+
+        CircleMember::query()->updateOrCreate(
+            [
+                'circle_id' => $circle->id,
+                'user_id' => $request->user()->id,
+            ],
+            [],
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'circle' => [
+                    'id' => $circle->id,
+                    'name' => $circle->name,
+                    'users_count' => 1,
+                ],
+            ], 201);
+        }
+
+        return back();
+    })->name('circles.store');
+
+    Route::post('/connections/invite', function (Request $request) {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $service = app(InvitationService::class);
+
+        $invitee = $service->resolveInviteeByEmail((string) $data['email']);
+        if ($invitee->id === $request->user()->id) {
+            return response()->json([
+                'message' => 'Você não pode convidar você mesmo.',
+            ], 422);
+        }
+
+        $created = $service->createInvitation([
+            'type' => 'connection',
+            'inviter_user_id' => $request->user()->id,
+            'invitee_user_id' => $invitee->id,
+            'invitee_email' => mb_strtolower(trim((string) $data['email'])),
+            'status' => 'pending',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        return response()->json([
+            'url' => url('/invite/'.$created['token']),
+        ], 201);
+    })->name('connections.invite');
+
+    Route::post('/legal/accept', [LegalController::class, 'accept'])->name('legal.accept');
+    Route::get('/localizacao-necessaria', [LegalController::class, 'locationRequired'])->name('location.required');
+    Route::get('/invite/{token}', [InviteController::class, 'show'])->name('invite.show');
+    Route::post('/invite/{token}/accept', [InviteController::class, 'accept'])->name('invite.accept');
+    Route::post('/invite/{token}/decline', [InviteController::class, 'decline'])->name('invite.decline');
+});
