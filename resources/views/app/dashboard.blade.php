@@ -476,40 +476,43 @@
         </div>
     </div>
 
-    <div class="modal fade" id="connectionProfileModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-            <div class="modal-content al-card">
-                <div class="modal-header border-0">
-                    <div class="d-flex align-items-center gap-3 min-w-0">
-                        <div class="al-conn-profile__avatar" id="alConnProfileAvatar"></div>
-                        <div class="min-w-0">
-                            <div class="fw-semibold text-white text-truncate" id="alConnProfileName">Conexão</div>
-                            <div class="text-secondary small text-truncate" id="alConnProfileStatus"></div>
-                        </div>
-                    </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+    <div class="al-dock-sheet" id="alDockPersonSheet" aria-hidden="true">
+        <div class="al-dock-sheet__card al-card">
+            <div class="al-dock-sheet__head">
+                <div class="al-dock-sheet__avatar" id="alDockPersonAvatar"></div>
+                <div class="min-w-0 flex-grow-1">
+                    <div class="fw-semibold text-white text-truncate" id="alDockPersonName">Conexão</div>
+                    <div class="text-secondary small text-truncate" id="alDockPersonStatus"></div>
                 </div>
-                <div class="modal-body pt-0">
-                    <div class="al-card al-card-strong p-3 p-md-4 mb-3">
-                        <div class="fw-semibold text-white mb-2">Grupos em comum</div>
-                        <div class="text-secondary small" id="alConnProfileGroups"></div>
-                    </div>
-                    <div class="al-card al-card-strong p-3 p-md-4 mb-3" id="alConnProfilePlacesCard">
-                        <div class="fw-semibold text-white mb-2">Locais seguros</div>
-                        <div class="text-secondary small mb-2" id="alConnProfilePlacesHint"></div>
-                        <div class="list-group list-group-flush" id="alConnProfilePlaces"></div>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="al-btn-primary flex-grow-1" type="button" id="alConnProfileGo">Ir até a pessoa</button>
-                        <button class="al-btn-secondary flex-grow-1" type="button" id="alConnProfileRoute">Traçar rota</button>
-                    </div>
-                    <div class="d-flex gap-2 mt-2">
-                        <button class="al-btn-secondary flex-grow-1" type="button" id="alConnProfileStartRoute">Iniciar rota</button>
-                        <button class="al-btn-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Fechar</button>
-                    </div>
+                <button class="al-dock-sheet__close" type="button" id="alDockPersonClose" aria-label="Fechar">
+                    <i class="mdi mdi-close"></i>
+                </button>
+            </div>
+            <div class="al-dock-sheet__body">
+                <div class="al-card al-card-strong p-3 p-md-4 mb-3">
+                    <div class="fw-semibold text-white mb-2">Grupos em comum</div>
+                    <div class="text-secondary small" id="alDockPersonGroups"></div>
+                </div>
+                <div class="al-card al-card-strong p-3 p-md-4 mb-3">
+                    <div class="fw-semibold text-white mb-2">Locais seguros</div>
+                    <div class="text-secondary small mb-2" id="alDockPersonPlacesHint"></div>
+                    <div class="list-group list-group-flush" id="alDockPersonPlaces"></div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="al-btn-primary flex-grow-1" type="button" id="alDockPersonGo">Ir até a pessoa</button>
+                    <button class="al-btn-secondary flex-grow-1" type="button" id="alDockPersonRoute">Traçar rota</button>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="al-btn-secondary flex-grow-1" type="button" id="alDockPersonStartRoute">Iniciar rota</button>
+                    <button class="al-btn-secondary flex-grow-1" type="button" id="alDockPersonClose2">Fechar</button>
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="al-route-bar d-none" id="alRouteBar" aria-hidden="true">
+        <div class="al-route-bar__label text-truncate" id="alRouteBarLabel">Rota</div>
+        <button class="al-route-bar__btn" type="button" id="alRouteBarClear">Encerrar rota</button>
     </div>
 
     <div class="modal fade al-modal-side" id="safePlacesModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="false">

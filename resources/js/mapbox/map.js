@@ -151,6 +151,9 @@ const bootMapbox = () => {
   const routeOpenGoogleEl = document.getElementById('routeOpenGoogle');
   const routeOpenWazeEl = document.getElementById('routeOpenWaze');
   const routeOpenAppleEl = document.getElementById('routeOpenApple');
+  const routeBarEl = document.getElementById('alRouteBar');
+  const routeBarLabelEl = document.getElementById('alRouteBarLabel');
+  const routeBarClearEl = document.getElementById('alRouteBarClear');
 
   const routeSourceId = 'al-route';
   const routeLayerId = 'al-route-line';
@@ -289,7 +292,14 @@ const bootMapbox = () => {
       src?.setData({ type: 'FeatureCollection', features: [] });
     } catch {
     }
+
+    if (routeBarEl) {
+      routeBarEl.classList.add('d-none');
+      routeBarEl.setAttribute('aria-hidden', 'true');
+    }
   };
+
+  routeBarClearEl?.addEventListener('click', () => clearRoute());
 
   const getOrigin = async () => {
     if (meMarkerId && markers[meMarkerId]?.lngLat) {
@@ -357,6 +367,15 @@ const bootMapbox = () => {
       routeActive = true;
       routeDestination = { lng: destLng, lat: destLat, label: String(label || '') };
       fitToRoute(coords);
+
+      if (routeBarEl) {
+        if (routeBarLabelEl) {
+          const t = String(label || '').trim();
+          routeBarLabelEl.textContent = t ? `Rota: ${t}` : 'Rota ativa';
+        }
+        routeBarEl.classList.remove('d-none');
+        routeBarEl.setAttribute('aria-hidden', 'false');
+      }
     } catch {
     }
   };
@@ -1743,19 +1762,46 @@ const bootMapbox = () => {
     const host = document.getElementById('alDockConnections');
     if (!host) return;
 
-    const modalEl = document.getElementById('connectionProfileModal');
-    const avatarEl = document.getElementById('alConnProfileAvatar');
-    const nameEl = document.getElementById('alConnProfileName');
-    const statusEl = document.getElementById('alConnProfileStatus');
-    const groupsEl = document.getElementById('alConnProfileGroups');
-    const placesCardEl = document.getElementById('alConnProfilePlacesCard');
-    const placesHintEl = document.getElementById('alConnProfilePlacesHint');
-    const placesEl = document.getElementById('alConnProfilePlaces');
-    const goBtn = document.getElementById('alConnProfileGo');
-    const routeBtn = document.getElementById('alConnProfileRoute');
-    const startRouteBtn = document.getElementById('alConnProfileStartRoute');
+    const sheetEl = document.getElementById('alDockPersonSheet');
+    const avatarEl = document.getElementById('alDockPersonAvatar');
+    const nameEl = document.getElementById('alDockPersonName');
+    const statusEl = document.getElementById('alDockPersonStatus');
+    const groupsEl = document.getElementById('alDockPersonGroups');
+    const placesHintEl = document.getElementById('alDockPersonPlacesHint');
+    const placesEl = document.getElementById('alDockPersonPlaces');
+    const closeBtn = document.getElementById('alDockPersonClose');
+    const closeBtn2 = document.getElementById('alDockPersonClose2');
+    const goBtn = document.getElementById('alDockPersonGo');
+    const routeBtn = document.getElementById('alDockPersonRoute');
+    const startRouteBtn = document.getElementById('alDockPersonStartRoute');
 
-    if (!modalEl || !avatarEl || !nameEl || !statusEl || !groupsEl || !placesCardEl || !placesHintEl || !placesEl) return;
+    if (!sheetEl || !avatarEl || !nameEl || !statusEl || !groupsEl || !placesHintEl || !placesEl) return;
+
+    const hide = () => {
+      sheetEl.classList.remove('al-dock-sheet--show');
+      sheetEl.setAttribute('aria-hidden', 'true');
+    };
+
+    const show = () => {
+      sheetEl.classList.add('al-dock-sheet--show');
+      sheetEl.setAttribute('aria-hidden', 'false');
+    };
+
+    closeBtn?.addEventListener('click', hide);
+    closeBtn2?.addEventListener('click', hide);
+
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') hide();
+    });
+
+    document.addEventListener('mousedown', (ev) => {
+      if (!sheetEl.classList.contains('al-dock-sheet--show')) return;
+      const t = ev.target;
+      if (sheetEl.contains(t) && !t.closest?.('.al-dock-sheet__card')) return;
+      if (t.closest?.('#alDockConnections')) return;
+      if (t.closest?.('.al-dock-sheet__card')) return;
+      hide();
+    });
 
     const setAvatar = ({ photoUrl, initials }) => {
       while (avatarEl.firstChild) avatarEl.removeChild(avatarEl.firstChild);
@@ -1809,10 +1855,7 @@ const bootMapbox = () => {
       if (!active) return;
       const { lat, lng, device } = active;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      try {
-        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
-      } catch {
-      }
+      hide();
       if (device) {
         openPersonDetail(device, { fly: true });
       } else {
@@ -1824,10 +1867,7 @@ const bootMapbox = () => {
       if (!active) return;
       const { lat, lng, name } = active;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      try {
-        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
-      } catch {
-      }
+      hide();
       drawRouteTo({ lng, lat, label: name });
     });
 
@@ -1852,11 +1892,7 @@ const bootMapbox = () => {
       placesHintEl.textContent = '';
       placesEl.innerHTML = '';
       setAvatar({ photoUrl: null, initials: '…' });
-
-      try {
-        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.show();
-      } catch {
-      }
+      show();
 
       let profile = null;
       try {
@@ -1931,22 +1967,56 @@ const bootMapbox = () => {
         const icon = p?.icon ? String(p.icon) : 'mdi-map-marker';
         const n = p?.name ? String(p.name) : 'Local seguro';
         const addr = p?.address ? String(p.address) : '';
-        const badgeClass = inside ? 'text-bg-success' : 'text-bg-secondary';
-        const badgeText = inside ? 'Dentro' : 'Fora';
 
-        item.innerHTML = `
-          <div class="d-flex align-items-center justify-content-between gap-3">
-            <div class="d-flex align-items-center gap-2 min-w-0">
-              <i class="mdi ${icon} fs-5"></i>
-              <div class="min-w-0">
-                <div class="fw-semibold text-truncate">${n}</div>
-                <div class="text-secondary small text-truncate">${addr}</div>
-              </div>
-            </div>
-            <span class="badge rounded-pill ${badgeClass}">${badgeText}</span>
-          </div>
-        `;
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-start justify-content-between gap-3';
 
+        const left = document.createElement('div');
+        left.className = 'd-flex align-items-start gap-2 min-w-0';
+
+        const iconEl = document.createElement('i');
+        iconEl.className = `mdi ${icon} fs-5`;
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'min-w-0';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'fw-semibold text-truncate';
+        titleEl.textContent = n;
+
+        const addrEl = document.createElement('div');
+        addrEl.className = 'text-secondary small al-place-addr';
+        addrEl.textContent = addr;
+
+        textWrap.appendChild(titleEl);
+        if (addr) textWrap.appendChild(addrEl);
+
+        if (addr && addr.length > 54) {
+          const moreBtn = document.createElement('button');
+          moreBtn.type = 'button';
+          moreBtn.className = 'al-place-more';
+          moreBtn.textContent = 'Ver tudo';
+          moreBtn.addEventListener('click', () => {
+            const expanded = addrEl.classList.toggle('al-place-addr--expanded');
+            moreBtn.textContent = expanded ? 'Ver menos' : 'Ver tudo';
+          });
+          textWrap.appendChild(moreBtn);
+        }
+
+        left.appendChild(iconEl);
+        left.appendChild(textWrap);
+
+        const status = document.createElement('span');
+        status.className = `al-place-status ${inside ? 'al-place-status--in' : 'al-place-status--out'}`;
+        status.setAttribute('aria-label', inside ? 'Está no local seguro' : 'Não está no local seguro');
+
+        const statusIcon = document.createElement('i');
+        statusIcon.className = `mdi ${inside ? 'mdi-map-marker' : 'mdi-close'}`;
+        status.appendChild(statusIcon);
+
+        row.appendChild(left);
+        row.appendChild(status);
+        item.appendChild(row);
         placesEl.appendChild(item);
       });
     });
