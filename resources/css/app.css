@@ -885,6 +885,51 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.al-hub__dock-connections {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.al-hub__dock-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.al-hub__dock-avatar:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.al-conn-profile__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  flex: 0 0 48px;
+}
+
+.al-conn-profile__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .al-notif-badge {
   position: absolute;
   top: 6px;

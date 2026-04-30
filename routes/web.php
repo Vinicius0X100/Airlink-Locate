@@ -11,8 +11,11 @@ use App\Models\Device;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\SafePlace;
+use App\Models\User;
+use App\Models\UserConnection;
 use App\Services\InvitationService;
 use App\Services\LocationService;
+use App\Services\SacratechAuthService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -164,6 +167,92 @@ Route::middleware('auth')->group(function () {
 
         return back();
     })->name('me.photo');
+
+    Route::get('/connections/{user}/profile', function (Request $request, User $user) {
+        $me = $request->user();
+
+        $connected = UserConnection::query()
+            ->where('status', 'accepted')
+            ->where(function ($q) use ($me, $user) {
+                $q->where(function ($q2) use ($me, $user) {
+                    $q2->where('user_a_id', $me->id)->where('user_b_id', $user->id);
+                })->orWhere(function ($q2) use ($me, $user) {
+                    $q2->where('user_b_id', $me->id)->where('user_a_id', $user->id);
+                });
+            })
+            ->exists();
+
+        abort_unless($connected, 403);
+
+        $fullName = (string) ($user->name ?? 'Usuário');
+        if ($user->sacratech_user_id) {
+            $s = app(SacratechAuthService::class)->fetchUserById((int) $user->sacratech_user_id);
+            if ($s) {
+                $first = trim((string) ($s->nome ?? ''));
+                $last = trim((string) ($s->sobrenome ?? ''));
+                $n = trim($first.' '.$last);
+                if ($n !== '') {
+                    $fullName = $n;
+                }
+            }
+        }
+
+        $initials = '?';
+        $parts = preg_split('/\s+/', trim($fullName)) ?: [];
+        $first = $parts[0] ?? '';
+        $last = count($parts) > 1 ? ($parts[count($parts) - 1] ?? '') : '';
+        $initials = trim(mb_substr($first, 0, 1).mb_substr($last, 0, 1));
+        if ($initials === '') {
+            $initials = mb_strtoupper(mb_substr($fullName, 0, 2));
+        } else {
+            $initials = mb_strtoupper($initials);
+        }
+
+        $circles = Circle::query()
+            ->whereHas('users', fn ($q) => $q->where('users_airlink.id', $me->id))
+            ->whereHas('users', fn ($q) => $q->where('users_airlink.id', $user->id))
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Circle $c) => (string) $c->name)
+            ->values();
+
+        $families = Family::query()
+            ->whereHas('users', fn ($q) => $q->where('users_airlink.id', $me->id))
+            ->whereHas('users', fn ($q) => $q->where('users_airlink.id', $user->id))
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Family $f) => (string) $f->name)
+            ->values();
+
+        $places = SafePlace::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (SafePlace $p) => [
+                'id' => (int) $p->id,
+                'name' => (string) $p->name,
+                'icon' => $p->icon ? (string) $p->icon : null,
+                'address' => $p->address ? (string) $p->address : null,
+                'lat' => (float) $p->latitude,
+                'lng' => (float) $p->longitude,
+                'radius' => (int) $p->radius,
+            ])
+            ->values();
+
+        return response()->json([
+            'user' => [
+                'id' => (int) $user->id,
+                'full_name' => $fullName,
+                'initials' => $initials,
+                'photo_url' => $user->photo ? asset('storage/'.$user->photo) : null,
+            ],
+            'shared' => [
+                'circles' => $circles,
+                'families' => $families,
+            ],
+            'safe_places' => $places,
+        ]);
+    })->name('connections.profile');
 
     Route::get('/safe-places', function (Request $request) {
         $places = SafePlace::query()

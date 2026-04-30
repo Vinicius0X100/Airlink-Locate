@@ -1,6 +1,11 @@
 @extends('layouts.site')
 
-@section('title', 'Convite - Airlink Locate')
+@section('title', $seo_title ?? 'Convite - Airlink Locate')
+@section('meta_description', $seo_description ?? 'Convite do Airlink Locate.')
+@section('og_title', $seo_og_title ?? ($seo_title ?? 'Convite - Airlink Locate'))
+@section('og_description', $seo_og_description ?? ($seo_description ?? 'Convite do Airlink Locate.'))
+@section('twitter_title', $seo_og_title ?? ($seo_title ?? 'Convite - Airlink Locate'))
+@section('twitter_description', $seo_og_description ?? ($seo_description ?? 'Convite do Airlink Locate.'))
 
 @section('content')
     <section class="position-relative overflow-hidden">

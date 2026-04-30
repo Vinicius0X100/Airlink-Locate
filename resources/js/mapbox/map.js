@@ -146,6 +146,16 @@ const bootMapbox = () => {
   const groupMembersModalEl = document.getElementById('groupMembersModal');
   const groupMembersTitleEl = document.getElementById('groupMembersTitle');
   const groupMembersListEl = document.getElementById('groupMembersList');
+  const routeModalEl = document.getElementById('routeModal');
+  const routeModalSubtitleEl = document.getElementById('routeModalSubtitle');
+  const routeOpenGoogleEl = document.getElementById('routeOpenGoogle');
+  const routeOpenWazeEl = document.getElementById('routeOpenWaze');
+  const routeOpenAppleEl = document.getElementById('routeOpenApple');
+
+  const routeSourceId = 'al-route';
+  const routeLayerId = 'al-route-line';
+  let routeActive = false;
+  let routeDestination = null;
 
   const focusSourceId = 'al-safeplace-focus';
   const focusFillId = 'al-safeplace-focus-fill';
@@ -245,6 +255,153 @@ const bootMapbox = () => {
     }
   };
 
+  const ensureRouteLayer = () => {
+    if (!map.getSource(routeSourceId)) {
+      map.addSource(routeSourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+    }
+
+    if (!map.getLayer(routeLayerId)) {
+      map.addLayer({
+        id: routeLayerId,
+        type: 'line',
+        source: routeSourceId,
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#0A84FF',
+          'line-width': 5,
+          'line-opacity': 0.85,
+        },
+      });
+    }
+  };
+
+  const clearRoute = () => {
+    routeActive = false;
+    routeDestination = null;
+    try {
+      const src = map.getSource(routeSourceId);
+      src?.setData({ type: 'FeatureCollection', features: [] });
+    } catch {
+    }
+  };
+
+  const getOrigin = async () => {
+    if (meMarkerId && markers[meMarkerId]?.lngLat) {
+      return { lng: Number(markers[meMarkerId].lngLat.lng), lat: Number(markers[meMarkerId].lngLat.lat) };
+    }
+
+    if (!navigator.geolocation) return null;
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lng: Number(pos.coords.longitude), lat: Number(pos.coords.latitude) }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+      );
+    });
+  };
+
+  const fitToRoute = (coords) => {
+    if (!Array.isArray(coords) || coords.length < 2) return;
+    const bounds = new window.mapboxgl.LngLatBounds(coords[0], coords[0]);
+    coords.slice(1).forEach((c) => bounds.extend(c));
+    map.fitBounds(bounds, {
+      padding: { top: 190, right: 70, bottom: 140, left: 70 },
+      maxZoom: 16,
+      duration: 650,
+      essential: true,
+    });
+  };
+
+  const drawRouteTo = async ({ lng, lat, label }) => {
+    const destLng = Number(lng);
+    const destLat = Number(lat);
+    if (!Number.isFinite(destLng) || !Number.isFinite(destLat)) return;
+
+    clearRoute();
+
+    const origin = await getOrigin();
+    if (!origin || !Number.isFinite(origin.lng) || !Number.isFinite(origin.lat)) return;
+
+    const url = new URL(`https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destLng},${destLat}`);
+    url.searchParams.set('access_token', token);
+    url.searchParams.set('geometries', 'geojson');
+    url.searchParams.set('overview', 'full');
+    url.searchParams.set('steps', 'false');
+
+    try {
+      const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+      const data = await res.json().catch(() => ({}));
+      const coords = data?.routes?.[0]?.geometry?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) return;
+
+      ensureRouteLayer();
+      const src = map.getSource(routeSourceId);
+      src?.setData({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: {},
+          },
+        ],
+      });
+
+      routeActive = true;
+      routeDestination = { lng: destLng, lat: destLat, label: String(label || '') };
+      fitToRoute(coords);
+    } catch {
+    }
+  };
+
+  const openRouteApps = async ({ lng, lat, label }) => {
+    const destLng = Number(lng);
+    const destLat = Number(lat);
+    if (!Number.isFinite(destLng) || !Number.isFinite(destLat)) return;
+
+    const origin = await getOrigin();
+    const oLat = origin ? Number(origin.lat) : null;
+    const oLng = origin ? Number(origin.lng) : null;
+
+    const google = new URL('https://www.google.com/maps/dir/');
+    google.searchParams.set('api', '1');
+    google.searchParams.set('destination', `${destLat},${destLng}`);
+    if (Number.isFinite(oLat) && Number.isFinite(oLng)) {
+      google.searchParams.set('origin', `${oLat},${oLng}`);
+    }
+    google.searchParams.set('travelmode', 'driving');
+
+    const waze = new URL('https://waze.com/ul');
+    waze.searchParams.set('ll', `${destLat},${destLng}`);
+    waze.searchParams.set('navigate', 'yes');
+
+    const apple = new URL('http://maps.apple.com/');
+    apple.searchParams.set('daddr', `${destLat},${destLng}`);
+    if (Number.isFinite(oLat) && Number.isFinite(oLng)) {
+      apple.searchParams.set('saddr', `${oLat},${oLng}`);
+    }
+
+    if (routeModalSubtitleEl) {
+      const t = String(label || '').trim();
+      routeModalSubtitleEl.textContent = t ? `Destino: ${t}` : 'Escolha o app para iniciar a navegação.';
+    }
+    if (routeOpenGoogleEl) routeOpenGoogleEl.href = google.toString();
+    if (routeOpenWazeEl) routeOpenWazeEl.href = waze.toString();
+    if (routeOpenAppleEl) routeOpenAppleEl.href = apple.toString();
+
+    try {
+      window.bootstrap?.Modal?.getOrCreateInstance(routeModalEl)?.show();
+    } catch {
+    }
+  };
+
   const flyToLngLat = (lng, lat, zoomLevel = 16) => {
     if (!Number.isFinite(Number(lng)) || !Number.isFinite(Number(lat))) return;
     map.flyTo({
@@ -329,6 +486,23 @@ const bootMapbox = () => {
         variant: 'primary',
         onClick: () => flyToLngLat(lng, lat, 16),
       });
+      actions.push({
+        label: 'Traçar rota',
+        variant: 'secondary',
+        onClick: () => drawRouteTo({ lng, lat, label: name }),
+      });
+      actions.push({
+        label: 'Iniciar rota',
+        variant: 'secondary',
+        onClick: () => openRouteApps({ lng, lat, label: name }),
+      });
+      if (routeActive) {
+        actions.push({
+          label: 'Limpar rota',
+          variant: 'secondary',
+          onClick: () => clearRoute(),
+        });
+      }
     }
     actions.push({
       label: 'Fechar',
@@ -384,6 +558,23 @@ const bootMapbox = () => {
         variant: 'primary',
         onClick: () => flyToLngLat(lng, lat, 16),
       });
+      actions.push({
+        label: 'Traçar rota',
+        variant: 'secondary',
+        onClick: () => drawRouteTo({ lng, lat, label: name }),
+      });
+      actions.push({
+        label: 'Iniciar rota',
+        variant: 'secondary',
+        onClick: () => openRouteApps({ lng, lat, label: name }),
+      });
+      if (routeActive) {
+        actions.push({
+          label: 'Limpar rota',
+          variant: 'secondary',
+          onClick: () => clearRoute(),
+        });
+      }
     }
     actions.push({
       label: focusedSafePlaceId ? 'Ocultar área' : 'Mostrar área',
@@ -1548,6 +1739,219 @@ const bootMapbox = () => {
     });
   };
 
+  const attachDockConnections = () => {
+    const host = document.getElementById('alDockConnections');
+    if (!host) return;
+
+    const modalEl = document.getElementById('connectionProfileModal');
+    const avatarEl = document.getElementById('alConnProfileAvatar');
+    const nameEl = document.getElementById('alConnProfileName');
+    const statusEl = document.getElementById('alConnProfileStatus');
+    const groupsEl = document.getElementById('alConnProfileGroups');
+    const placesCardEl = document.getElementById('alConnProfilePlacesCard');
+    const placesHintEl = document.getElementById('alConnProfilePlacesHint');
+    const placesEl = document.getElementById('alConnProfilePlaces');
+    const goBtn = document.getElementById('alConnProfileGo');
+    const routeBtn = document.getElementById('alConnProfileRoute');
+    const startRouteBtn = document.getElementById('alConnProfileStartRoute');
+
+    if (!modalEl || !avatarEl || !nameEl || !statusEl || !groupsEl || !placesCardEl || !placesHintEl || !placesEl) return;
+
+    const setAvatar = ({ photoUrl, initials }) => {
+      while (avatarEl.firstChild) avatarEl.removeChild(avatarEl.firstChild);
+      if (photoUrl) {
+        const img = document.createElement('img');
+        img.src = String(photoUrl);
+        img.alt = '';
+        avatarEl.appendChild(img);
+        return;
+      }
+      avatarEl.textContent = String(initials || '').slice(0, 2).toUpperCase();
+    };
+
+    const distanceMeters = (lat1, lng1, lat2, lng2) => {
+      const R = 6371000;
+      const toRad = (v) => (v * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    const getLastDeviceForUser = (userId) => {
+      const id = String(userId || '');
+      if (!id) return null;
+      const list = lastDevices.filter((d) => d?.user_id && String(d.user_id) === id);
+      if (list.length === 0) return null;
+      const best = list
+        .slice()
+        .sort((a, b) => {
+          const ta = a?.last_seen_at ? new Date(String(a.last_seen_at)).getTime() : 0;
+          const tb = b?.last_seen_at ? new Date(String(b.last_seen_at)).getTime() : 0;
+          return tb - ta;
+        })[0];
+      return best || null;
+    };
+
+    let active = null;
+
+    const updateActionsState = () => {
+      const ok = active && Number.isFinite(active.lat) && Number.isFinite(active.lng);
+      if (goBtn) goBtn.disabled = !ok;
+      if (routeBtn) routeBtn.disabled = !ok;
+      if (startRouteBtn) startRouteBtn.disabled = !ok;
+    };
+
+    goBtn?.addEventListener('click', () => {
+      if (!active) return;
+      const { lat, lng, device } = active;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      try {
+        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
+      } catch {
+      }
+      if (device) {
+        openPersonDetail(device, { fly: true });
+      } else {
+        flyToLngLat(lng, lat, 16);
+      }
+    });
+
+    routeBtn?.addEventListener('click', () => {
+      if (!active) return;
+      const { lat, lng, name } = active;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      try {
+        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.hide();
+      } catch {
+      }
+      drawRouteTo({ lng, lat, label: name });
+    });
+
+    startRouteBtn?.addEventListener('click', () => {
+      if (!active) return;
+      const { lat, lng, name } = active;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      openRouteApps({ lng, lat, label: name });
+    });
+
+    host.addEventListener('click', async (e) => {
+      const btn = e.target?.closest?.('[data-user-id]');
+      if (!btn) return;
+      const userId = btn.dataset.userId ? String(btn.dataset.userId) : '';
+      if (!userId) return;
+
+      active = { userId, name: '', lat: null, lng: null, device: null };
+      updateActionsState();
+      nameEl.textContent = 'Carregando…';
+      statusEl.textContent = '';
+      groupsEl.textContent = '';
+      placesHintEl.textContent = '';
+      placesEl.innerHTML = '';
+      setAvatar({ photoUrl: null, initials: '…' });
+
+      try {
+        window.bootstrap?.Modal?.getOrCreateInstance(modalEl)?.show();
+      } catch {
+      }
+
+      let profile = null;
+      try {
+        const res = await fetch(`/connections/${encodeURIComponent(userId)}/profile`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        });
+        profile = await res.json().catch(() => null);
+      } catch {
+      }
+
+      const u = profile?.user || null;
+      const fullName = u?.full_name ? String(u.full_name) : 'Conexão';
+      const photoUrl = u?.photo_url ? String(u.photo_url) : null;
+      const initials = u?.initials ? String(u.initials) : fullName.slice(0, 2);
+      setAvatar({ photoUrl, initials });
+      nameEl.textContent = fullName;
+
+      const device = getLastDeviceForUser(userId);
+      const lat = device?.lat != null ? Number(device.lat) : null;
+      const lng = device?.lng != null ? Number(device.lng) : null;
+      active = { userId, name: fullName, lat, lng, device };
+      updateActionsState();
+
+      if (device?.is_online) {
+        statusEl.textContent = 'Online agora';
+      } else if (device?.last_seen_at) {
+        statusEl.textContent = `Última atualização: ${formatLastSeen(device.last_seen_at)}`;
+      } else {
+        statusEl.textContent = 'Sem localização recente';
+      }
+
+      const circles = Array.isArray(profile?.shared?.circles) ? profile.shared.circles : [];
+      const families = Array.isArray(profile?.shared?.families) ? profile.shared.families : [];
+      const lines = [];
+      if (circles.length > 0) lines.push(`Círculos: ${circles.join(', ')}`);
+      if (families.length > 0) lines.push(`Famílias: ${families.join(', ')}`);
+      groupsEl.textContent = lines.length > 0 ? lines.join(' • ') : 'Nenhum grupo em comum.';
+
+      const canSeePlaces = circles.length > 0 || families.length > 0;
+      if (!canSeePlaces) {
+        placesHintEl.textContent = 'Entre no mesmo círculo ou família para ver os locais seguros dessa pessoa.';
+        placesEl.innerHTML = '';
+        return;
+      }
+
+      const places = Array.isArray(profile?.safe_places) ? profile.safe_places : [];
+      if (places.length === 0) {
+        placesHintEl.textContent = 'Nenhum local seguro cadastrado.';
+        placesEl.innerHTML = '';
+        return;
+      }
+
+      placesHintEl.textContent = Number.isFinite(lat) && Number.isFinite(lng) ? 'Status baseado na última localização.' : 'Sem localização recente.';
+      placesEl.innerHTML = '';
+      places.forEach((p) => {
+        const pLat = p?.lat != null ? Number(p.lat) : null;
+        const pLng = p?.lng != null ? Number(p.lng) : null;
+        const radius = p?.radius != null ? Number(p.radius) : null;
+        const inside =
+          Number.isFinite(lat) &&
+          Number.isFinite(lng) &&
+          Number.isFinite(pLat) &&
+          Number.isFinite(pLng) &&
+          Number.isFinite(radius) &&
+          distanceMeters(lat, lng, pLat, pLng) <= radius;
+
+        const item = document.createElement('div');
+        item.className = 'list-group-item bg-transparent text-white border-secondary border-opacity-25';
+
+        const icon = p?.icon ? String(p.icon) : 'mdi-map-marker';
+        const n = p?.name ? String(p.name) : 'Local seguro';
+        const addr = p?.address ? String(p.address) : '';
+        const badgeClass = inside ? 'text-bg-success' : 'text-bg-secondary';
+        const badgeText = inside ? 'Dentro' : 'Fora';
+
+        item.innerHTML = `
+          <div class="d-flex align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-2 min-w-0">
+              <i class="mdi ${icon} fs-5"></i>
+              <div class="min-w-0">
+                <div class="fw-semibold text-truncate">${n}</div>
+                <div class="text-secondary small text-truncate">${addr}</div>
+              </div>
+            </div>
+            <span class="badge rounded-pill ${badgeClass}">${badgeText}</span>
+          </div>
+        `;
+
+        placesEl.appendChild(item);
+      });
+    });
+  };
+
   const attachPickSafePlace = () => {
     const btn = document.getElementById('pickSafePlaceOnMap');
     const latEl = document.getElementById('safePlaceLat');
@@ -1821,6 +2225,7 @@ const bootMapbox = () => {
     attachNavbarFocus();
     attachLocationReporter();
     attachDashboardActions();
+    attachDockConnections();
     attachPickSafePlace();
     attachSafePlaceBuilder();
     setLoadingText('Localizando pontos…');

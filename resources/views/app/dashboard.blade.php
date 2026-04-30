@@ -89,6 +89,28 @@
             <div class="al-map-detail__actions" id="alMapDetailActions"></div>
         </div>
 
+        <div class="modal fade" id="routeModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-sm modal-dialog-scrollable">
+                <div class="modal-content al-card">
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title fw-semibold">Iniciar rota</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body pt-0">
+                        <div class="text-secondary small mb-3" id="routeModalSubtitle"></div>
+                        <div class="vstack gap-2">
+                            <a class="al-btn-primary text-decoration-none" href="#" id="routeOpenGoogle" target="_blank"
+                                rel="noopener noreferrer">Google Maps</a>
+                            <a class="al-btn-secondary text-decoration-none" href="#" id="routeOpenWaze" target="_blank"
+                                rel="noopener noreferrer">Waze</a>
+                            <a class="al-btn-secondary text-decoration-none" href="#" id="routeOpenApple" target="_blank"
+                                rel="noopener noreferrer">Apple Maps</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="al-loading-screen" id="alLoadingScreen" aria-live="polite" aria-busy="true">
             <div class="al-loading-screen__content">
                 <img class="al-loading-screen__logo" src="{{ asset('airlink-locate-logo-white.png') }}" alt="Airlink Locate">
@@ -168,6 +190,43 @@
                     <i class="mdi mdi-bell-outline"></i>
                     <span class="al-notif-badge d-none" id="alAlertsBadge">0</span>
                 </button>
+                @php
+                    $dockConnections = $connections
+                        ->map(function ($c) {
+                            return $c->user_a_id === auth()->id() ? $c->userB : $c->userA;
+                        })
+                        ->filter()
+                        ->unique('id')
+                        ->take(7)
+                        ->values();
+
+                    $makeInitials = function (?string $name): string {
+                        $name = trim((string) $name);
+                        if ($name === '') {
+                            return '?';
+                        }
+                        $parts = preg_split('/\s+/', $name) ?: [];
+                        $first = $parts[0] ?? '';
+                        $last = count($parts) > 1 ? ($parts[count($parts) - 1] ?? '') : '';
+                        $initials = mb_substr($first, 0, 1).mb_substr($last, 0, 1);
+                        $initials = trim($initials);
+                        return $initials !== '' ? mb_strtoupper($initials) : mb_strtoupper(mb_substr($name, 0, 2));
+                    };
+                @endphp
+                @if ($dockConnections->isNotEmpty())
+                    <div class="al-hub__dock-connections" id="alDockConnections" aria-label="Conexões recentes">
+                        @foreach ($dockConnections as $u)
+                            <button class="al-hub__dock-avatar" type="button" data-user-id="{{ (int) $u->id }}"
+                                aria-label="{{ (string) ($u->name ?? 'Conexão') }}">
+                                @if ($u->photo)
+                                    <img class="al-avatar-img" src="{{ asset('storage/' . $u->photo) }}" alt="">
+                                @else
+                                    <span class="al-avatar-initials">{{ $makeInitials($u->name ?? $u->email) }}</span>
+                                @endif
+                            </button>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
     </div>
@@ -412,6 +471,42 @@
                             @endforeach
                         </div>
                     @endif
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="connectionProfileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content al-card">
+                <div class="modal-header border-0">
+                    <div class="d-flex align-items-center gap-3 min-w-0">
+                        <div class="al-conn-profile__avatar" id="alConnProfileAvatar"></div>
+                        <div class="min-w-0">
+                            <div class="fw-semibold text-white text-truncate" id="alConnProfileName">Conexão</div>
+                            <div class="text-secondary small text-truncate" id="alConnProfileStatus"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="al-card al-card-strong p-3 p-md-4 mb-3">
+                        <div class="fw-semibold text-white mb-2">Grupos em comum</div>
+                        <div class="text-secondary small" id="alConnProfileGroups"></div>
+                    </div>
+                    <div class="al-card al-card-strong p-3 p-md-4 mb-3" id="alConnProfilePlacesCard">
+                        <div class="fw-semibold text-white mb-2">Locais seguros</div>
+                        <div class="text-secondary small mb-2" id="alConnProfilePlacesHint"></div>
+                        <div class="list-group list-group-flush" id="alConnProfilePlaces"></div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="al-btn-primary flex-grow-1" type="button" id="alConnProfileGo">Ir até a pessoa</button>
+                        <button class="al-btn-secondary flex-grow-1" type="button" id="alConnProfileRoute">Traçar rota</button>
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="al-btn-secondary flex-grow-1" type="button" id="alConnProfileStartRoute">Iniciar rota</button>
+                        <button class="al-btn-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Fechar</button>
+                    </div>
                 </div>
             </div>
         </div>
