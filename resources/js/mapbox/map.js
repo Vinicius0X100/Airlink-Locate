@@ -1991,18 +1991,6 @@ const bootMapbox = () => {
         textWrap.appendChild(titleEl);
         if (addr) textWrap.appendChild(addrEl);
 
-        if (addr && addr.length > 54) {
-          const moreBtn = document.createElement('button');
-          moreBtn.type = 'button';
-          moreBtn.className = 'al-place-more';
-          moreBtn.textContent = 'Ver tudo';
-          moreBtn.addEventListener('click', () => {
-            const expanded = addrEl.classList.toggle('al-place-addr--expanded');
-            moreBtn.textContent = expanded ? 'Ver menos' : 'Ver tudo';
-          });
-          textWrap.appendChild(moreBtn);
-        }
-
         left.appendChild(iconEl);
         left.appendChild(textWrap);
 

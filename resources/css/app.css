@@ -924,7 +924,7 @@ body {
   left: 50%;
   bottom: 74px;
   transform: translate3d(-50%, 12px, 0);
-  width: min(620px, calc(100vw - 28px));
+  width: min(760px, calc(100vw - 28px));
   z-index: 1045;
   opacity: 0;
   visibility: hidden;
@@ -943,6 +943,10 @@ body {
   border-radius: 22px;
   overflow: hidden;
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.58);
+  background: rgba(9, 9, 11, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .al-dock-sheet__head {
@@ -992,8 +996,13 @@ body {
 
 .al-dock-sheet__body {
   padding: 0 14px 14px;
-  max-height: min(520px, calc(100vh - 190px));
-  overflow: auto;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.al-dock-sheet__body .list-group-item {
+  overflow: hidden;
 }
 
 .al-route-bar {
@@ -1013,7 +1022,7 @@ body {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  width: min(620px, calc(100vw - 28px));
+  width: min(760px, calc(100vw - 28px));
   justify-content: space-between;
 }
 
