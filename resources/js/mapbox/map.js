@@ -1737,7 +1737,12 @@ const bootMapbox = () => {
         window.setTimeout(() => focusMe(), 250);
       }
       hideLoading();
-      window.setInterval(refresh, 5000);
+      const intervalMs = 2000;
+      const tick = async () => {
+        if (document.visibilityState !== 'visible') return;
+        await refresh();
+      };
+      window.setInterval(tick, intervalMs);
     })();
   });
 
