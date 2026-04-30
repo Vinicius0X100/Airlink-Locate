@@ -1644,8 +1644,6 @@ const bootMapbox = () => {
     if (!meShareLocation) return;
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const allowed = localStorage.getItem('airlink_location_allowed') === '1';
-    if (!allowed) return;
 
     let lastSentAt = 0;
     let lastKey = '';
@@ -1672,6 +1670,11 @@ const bootMapbox = () => {
       const lat = Number(pos?.coords?.latitude);
       const lng = Number(pos?.coords?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      try {
+        localStorage.setItem('airlink_location_allowed', '1');
+      } catch {
+      }
 
       setMeMarker(lat, lng);
 
