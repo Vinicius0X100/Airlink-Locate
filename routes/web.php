@@ -6,10 +6,12 @@ use App\Http\Controllers\Web\LegalController;
 use App\Http\Controllers\Web\LoginController;
 use App\Models\Circle;
 use App\Models\CircleMember;
+use App\Models\Device;
 use App\Models\Family;
 use App\Models\FamilyMember;
 use App\Models\SafePlace;
 use App\Services\InvitationService;
+use App\Services\LocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +34,36 @@ Route::get('/dashboard', function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/api/devices/locations', [LocationController::class, 'devicesLocations'])->name('devices.locations');
+
+    Route::post('/location/ping', function (Request $request) {
+        $data = $request->validate([
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $user = $request->user();
+
+        $device = Device::query()->updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'name' => 'Web',
+            ],
+            [],
+        );
+
+        $location = app(LocationService::class)->ingest(
+            $user,
+            $device,
+            (float) $data['lat'],
+            (float) $data['lng'],
+        );
+
+        return response()->json([
+            'ok' => true,
+            'device_id' => $device->id,
+            'created_at' => $location->created_at?->format(DATE_ATOM),
+        ]);
+    })->middleware('throttle:120,1')->name('location.ping');
 
     Route::post('/me/photo', function (Request $request) {
         $data = $request->validate([
@@ -176,6 +208,80 @@ Route::middleware('auth')->group(function () {
 
         return back();
     })->name('circles.store');
+
+    Route::post('/families/{family}/invite', function (Request $request, Family $family) {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $user = $request->user();
+
+        $isMember = (int) $family->owner_id === (int) $user->id || $family->members()->where('user_id', $user->id)->exists();
+        if (! $isMember) {
+            abort(403);
+        }
+
+        $service = app(InvitationService::class);
+
+        $email = mb_strtolower(trim((string) $data['email']));
+        $invitee = $service->resolveInviteeByEmail($email);
+        if ((int) $invitee->id === (int) $user->id) {
+            return response()->json([
+                'message' => 'Você não pode convidar você mesmo.',
+            ], 422);
+        }
+
+        $created = $service->createInvitation([
+            'type' => 'family',
+            'inviter_user_id' => $user->id,
+            'invitee_user_id' => $invitee->id,
+            'invitee_email' => $email,
+            'family_id' => $family->id,
+            'status' => 'pending',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        return response()->json([
+            'url' => url('/invite/'.$created['token']),
+        ], 201);
+    })->name('families.invite');
+
+    Route::post('/circles/{circle}/invite', function (Request $request, Circle $circle) {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $user = $request->user();
+
+        $isMember = (int) $circle->owner_id === (int) $user->id || $circle->members()->where('user_id', $user->id)->exists();
+        if (! $isMember) {
+            abort(403);
+        }
+
+        $service = app(InvitationService::class);
+
+        $email = mb_strtolower(trim((string) $data['email']));
+        $invitee = $service->resolveInviteeByEmail($email);
+        if ((int) $invitee->id === (int) $user->id) {
+            return response()->json([
+                'message' => 'Você não pode convidar você mesmo.',
+            ], 422);
+        }
+
+        $created = $service->createInvitation([
+            'type' => 'circle',
+            'inviter_user_id' => $user->id,
+            'invitee_user_id' => $invitee->id,
+            'invitee_email' => $email,
+            'circle_id' => $circle->id,
+            'status' => 'pending',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        return response()->json([
+            'url' => url('/invite/'.$created['token']),
+        ], 201);
+    })->name('circles.invite');
 
     Route::post('/connections/invite', function (Request $request) {
         $data = $request->validate([

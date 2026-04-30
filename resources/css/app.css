@@ -729,6 +729,7 @@ body {
 }
 
 .al-hub--collapsed .al-hub__panel {
+  left: 50%;
   width: min(320px, calc(100vw - 28px));
   max-height: 64px;
   overflow: hidden;
@@ -737,7 +738,7 @@ body {
   padding-bottom: 10px !important;
   padding-left: 14px !important;
   padding-right: 14px !important;
-  transform: none;
+  transform: translateX(-50%);
 }
 
 .al-hub--collapsed .al-hub__subtitle,
@@ -853,9 +854,9 @@ body {
 
 .al-hub__dock {
   position: absolute;
-  left: 14px;
+  left: 50%;
   bottom: 16px;
-  transform: none;
+  transform: translateX(-50%);
   display: inline-flex;
   gap: 6px;
   border-radius: 999px;

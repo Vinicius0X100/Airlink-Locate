@@ -17,13 +17,44 @@ class InviteController extends Controller
         private readonly InvitationService $invitationService,
     ) {}
 
+    private function mismatchView(Request $request, string $token, string $reason = 'Convite inválido para esta conta.')
+    {
+        $invitation = $this->invitationService->findByTokenOrFail($token)->load(['inviter', 'family', 'circle']);
+
+        return response()
+            ->view('pages.invite', [
+                'token' => $token,
+                'invitation' => $invitation,
+                'mismatch' => true,
+                'mismatch_reason' => $reason,
+                'expected_email' => $invitation->invitee_email ? mb_strtolower((string) $invitation->invitee_email) : null,
+                'current_email' => $request->user()?->email ? mb_strtolower((string) $request->user()->email) : null,
+            ], 403);
+    }
+
     public function show(Request $request, string $token)
     {
         $invitation = $this->invitationService->findByTokenOrFail($token)->load(['inviter', 'family', 'circle']);
 
+        $user = $request->user();
+        $email = $user?->email ? mb_strtolower((string) $user->email) : '';
+        $expected = $invitation->invitee_email ? mb_strtolower((string) $invitation->invitee_email) : '';
+        $mismatch = false;
+
+        if ($user && $invitation->invitee_user_id && (int) $invitation->invitee_user_id !== (int) $user->id) {
+            $mismatch = true;
+        }
+        if ($user && $expected !== '' && $email !== '' && $expected !== $email) {
+            $mismatch = true;
+        }
+
         return view('pages.invite', [
             'token' => $token,
             'invitation' => $invitation,
+            'mismatch' => $mismatch,
+            'mismatch_reason' => $mismatch ? 'Este convite foi gerado para outro email.' : null,
+            'expected_email' => $expected !== '' ? $expected : null,
+            'current_email' => $email !== '' ? $email : null,
         ]);
     }
 
@@ -47,10 +78,10 @@ class InviteController extends Controller
 
         $email = mb_strtolower($user->email);
         if ($invitation->invitee_user_id && $invitation->invitee_user_id !== $user->id) {
-            abort(403);
+            return $this->mismatchView($request, $token);
         }
         if ($invitation->invitee_email && mb_strtolower($invitation->invitee_email) !== $email) {
-            abort(403);
+            return $this->mismatchView($request, $token);
         }
 
         if ($invitation->type === 'family') {
@@ -114,10 +145,10 @@ class InviteController extends Controller
 
         $email = mb_strtolower($user->email);
         if ($invitation->invitee_user_id && $invitation->invitee_user_id !== $user->id) {
-            abort(403);
+            return $this->mismatchView($request, $token);
         }
         if ($invitation->invitee_email && mb_strtolower($invitation->invitee_email) !== $email) {
-            abort(403);
+            return $this->mismatchView($request, $token);
         }
 
         $invitation->update([

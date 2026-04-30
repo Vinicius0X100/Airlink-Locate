@@ -28,6 +28,7 @@ class LocationController extends Controller
 
         $connectedUserIds = UserConnection::query()
             ->where('status', 'accepted')
+            ->where('share_location', true)
             ->where(function ($q) use ($user) {
                 $q->where('user_a_id', $user->id)->orWhere('user_b_id', $user->id);
             })
@@ -126,6 +127,7 @@ class LocationController extends Controller
 
         $connectedUserIds = UserConnection::query()
             ->where('status', 'accepted')
+            ->where('share_location', true)
             ->where(function ($q) use ($user) {
                 $q->where('user_a_id', $user->id)->orWhere('user_b_id', $user->id);
             })

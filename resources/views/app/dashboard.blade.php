@@ -183,6 +183,32 @@
                         <input class="form-control al-input" type="text" name="name" placeholder="Nome da família" maxlength="120" required>
                         <button class="al-btn-primary" type="submit">Criar</button>
                     </form>
+                    <div class="al-card al-card-strong p-3 p-md-4 mb-3">
+                        <div class="fw-semibold text-white mb-2">Convidar por link</div>
+                        <form class="vstack gap-2" id="familyInviteForm">
+                            <div class="d-flex gap-2">
+                                <select class="form-select al-input" name="family_id" id="familyInviteFamilyId"
+                                    {{ $families->isEmpty() ? 'disabled' : '' }} required>
+                                    @foreach ($families as $family)
+                                        <option value="{{ (int) $family->id }}">{{ $family->name }}</option>
+                                    @endforeach
+                                </select>
+                                <input class="form-control al-input" type="email" name="email" placeholder="Email Sacratech iD"
+                                    {{ $families->isEmpty() ? 'disabled' : '' }} required>
+                            </div>
+                            <button class="al-btn-primary" type="submit" id="familyInviteSubmit" {{ $families->isEmpty() ? 'disabled' : '' }}>
+                                Gerar
+                            </button>
+                        </form>
+                        <div class="mt-3 d-none" id="familyInviteResult">
+                            <div class="text-secondary small mb-2">Link gerado</div>
+                            <div class="d-flex gap-2">
+                                <input class="form-control al-input" type="text" id="familyInviteUrl" readonly>
+                                <button class="al-btn-secondary" type="button" id="copyFamilyInvite">Copiar</button>
+                            </div>
+                        </div>
+                        <div class="text-secondary small mt-2 d-none" id="familyInviteError"></div>
+                    </div>
                     @if ($families->isEmpty())
                         <div class="text-secondary">Nenhuma família ainda.</div>
                     @else
@@ -222,6 +248,32 @@
                         <input class="form-control al-input" type="text" name="name" placeholder="Nome do círculo" maxlength="120" required>
                         <button class="al-btn-primary" type="submit">Criar</button>
                     </form>
+                    <div class="al-card al-card-strong p-3 p-md-4 mb-3">
+                        <div class="fw-semibold text-white mb-2">Convidar por link</div>
+                        <form class="vstack gap-2" id="circleInviteForm">
+                            <div class="d-flex gap-2">
+                                <select class="form-select al-input" name="circle_id" id="circleInviteCircleId"
+                                    {{ $circles->isEmpty() ? 'disabled' : '' }} required>
+                                    @foreach ($circles as $circle)
+                                        <option value="{{ (int) $circle->id }}">{{ $circle->name }}</option>
+                                    @endforeach
+                                </select>
+                                <input class="form-control al-input" type="email" name="email" placeholder="Email Sacratech iD"
+                                    {{ $circles->isEmpty() ? 'disabled' : '' }} required>
+                            </div>
+                            <button class="al-btn-primary" type="submit" id="circleInviteSubmit" {{ $circles->isEmpty() ? 'disabled' : '' }}>
+                                Gerar
+                            </button>
+                        </form>
+                        <div class="mt-3 d-none" id="circleInviteResult">
+                            <div class="text-secondary small mb-2">Link gerado</div>
+                            <div class="d-flex gap-2">
+                                <input class="form-control al-input" type="text" id="circleInviteUrl" readonly>
+                                <button class="al-btn-secondary" type="button" id="copyCircleInvite">Copiar</button>
+                            </div>
+                        </div>
+                        <div class="text-secondary small mt-2 d-none" id="circleInviteError"></div>
+                    </div>
                     @if ($circles->isEmpty())
                         <div class="text-secondary">Nenhum círculo ainda.</div>
                     @else
@@ -530,6 +582,112 @@
                 }
             });
 
+            const setupGroupInvite = ({ formId, selectId, urlInputId, resultId, errorId, copyId, endpointForId }) => {
+                const f = document.getElementById(formId);
+                const select = document.getElementById(selectId);
+                const result = document.getElementById(resultId);
+                const urlEl = document.getElementById(urlInputId);
+                const copy = document.getElementById(copyId);
+                const error = document.getElementById(errorId);
+
+                const showErr = (message) => {
+                    if (!error) return;
+                    error.textContent = message;
+                    error.classList.remove('d-none');
+                };
+
+                const clearErr = () => {
+                    if (!error) return;
+                    error.textContent = '';
+                    error.classList.add('d-none');
+                };
+
+                f?.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    clearErr();
+                    if (!select) return;
+
+                    const submit = f.querySelector('button[type="submit"]');
+                    setButtonLoading(submit, true);
+
+                    const fd = new FormData(f);
+                    const email = String(fd.get('email') || '').trim();
+                    const id = String(select.value || '').trim();
+                    if (!email || !id) {
+                        setButtonLoading(submit, false);
+                        return;
+                    }
+
+                    try {
+                        const res = await fetch(endpointForId(id), {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                                'Content-Type': 'application/json',
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ email }),
+                        });
+
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            showErr(data?.message || 'Não foi possível gerar o convite.');
+                            return;
+                        }
+
+                        if (urlEl) urlEl.value = String(data?.url || '');
+                        if (result) result.classList.remove('d-none');
+                    } catch {
+                        showErr('Não foi possível gerar o convite.');
+                    } finally {
+                        setButtonLoading(submit, false);
+                    }
+                });
+
+                copy?.addEventListener('click', async () => {
+                    const value = String(urlEl?.value || '');
+                    if (!value) return;
+                    try {
+                        await navigator.clipboard.writeText(value);
+                    } catch {
+                    }
+                });
+
+                return {
+                    addOption: ({ id, name }) => {
+                        if (!select) return;
+                        const opt = document.createElement('option');
+                        opt.value = String(id);
+                        opt.textContent = String(name || '');
+                        select.appendChild(opt);
+                        select.disabled = false;
+                        f?.querySelector('input[name="email"]')?.removeAttribute('disabled');
+                        f?.querySelector('button[type="submit"]')?.removeAttribute('disabled');
+                    },
+                };
+            };
+
+            const familyInvite = setupGroupInvite({
+                formId: 'familyInviteForm',
+                selectId: 'familyInviteFamilyId',
+                urlInputId: 'familyInviteUrl',
+                resultId: 'familyInviteResult',
+                errorId: 'familyInviteError',
+                copyId: 'copyFamilyInvite',
+                endpointForId: (id) => `{{ url('/families') }}/${encodeURIComponent(id)}/invite`,
+            });
+
+            const circleInvite = setupGroupInvite({
+                formId: 'circleInviteForm',
+                selectId: 'circleInviteCircleId',
+                urlInputId: 'circleInviteUrl',
+                resultId: 'circleInviteResult',
+                errorId: 'circleInviteError',
+                copyId: 'copyCircleInvite',
+                endpointForId: (id) => `{{ url('/circles') }}/${encodeURIComponent(id)}/invite`,
+            });
+
             const setButtonLoading = (btn, loading) => {
                 if (!btn) return;
 
@@ -617,6 +775,7 @@
                 item.querySelector('.fw-semibold').textContent = String(family.name || '');
                 item.querySelector('.text-secondary').textContent = `${Number(family.users_count || 1)} pessoa(s)`;
                 list.prepend(item);
+                familyInvite?.addOption?.({ id: family.id, name: family.name });
             });
 
             handleJsonForm('circlesCreateForm', '{{ route('circles.store') }}', (data, f) => {
@@ -653,6 +812,7 @@
                 item.querySelector('.fw-semibold').textContent = String(circle.name || '');
                 item.querySelector('.text-secondary').textContent = `${Number(circle.users_count || 1)} pessoa(s)`;
                 list.prepend(item);
+                circleInvite?.addOption?.({ id: circle.id, name: circle.name });
             });
 
             const safePlaceForm = document.getElementById('safePlaceForm');
