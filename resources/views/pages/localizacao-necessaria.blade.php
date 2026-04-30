@@ -16,8 +16,7 @@
                     </div>
 
                     <div class="text-secondary mt-3">
-                        Você pode continuar navegando, mas recursos essenciais não funcionarão corretamente sem acesso à localização. Para ativar, permita o
-                        acesso nas permissões do seu navegador/sistema e tente novamente.
+                        Para usar o Airlink Locate, é necessário permitir o acesso à localização. Ative a permissão no seu navegador/sistema e tente novamente.
                     </div>
 
                     <div class="d-flex flex-column flex-sm-row gap-2 mt-4">
@@ -32,20 +31,39 @@
     <script>
         (() => {
             const btn = document.getElementById('tryLocation');
-            if (!btn) return;
+            const go = () => {
+                window.location.href = '{{ route('dashboard') }}';
+            };
 
-            btn.addEventListener('click', () => {
+            const tryOnce = (timeoutMs) => {
                 if (!navigator.geolocation) return;
                 navigator.geolocation.getCurrentPosition(
                     () => {
-                        localStorage.setItem('airlink_location_allowed', '1');
-                        window.location.href = '{{ route('dashboard') }}';
+                        try {
+                            localStorage.setItem('airlink_location_allowed', '1');
+                        } catch {
+                        }
+                        go();
                     },
                     () => {
-                        localStorage.setItem('airlink_location_allowed', '0');
+                        try {
+                            localStorage.setItem('airlink_location_allowed', '0');
+                        } catch {
+                        }
                     },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
                 );
+            };
+
+            tryOnce(2500);
+            if (!btn) return;
+
+            btn.addEventListener('click', () => {
+                btn.disabled = true;
+                tryOnce(10000);
+                window.setTimeout(() => {
+                    btn.disabled = false;
+                }, 1400);
             });
         })();
     </script>

@@ -2323,6 +2323,64 @@ const bootMapbox = () => {
 };
 
 const bootWithRetry = () => {
+  const ensureLocationPermission = async (mapEl) => {
+    const requiredUrl = mapEl?.dataset?.locationRequiredUrl ? String(mapEl.dataset.locationRequiredUrl) : '';
+    if (!requiredUrl) return true;
+
+    const redirect = () => {
+      try {
+        localStorage.setItem('airlink_location_allowed', '0');
+      } catch {
+      }
+      try {
+        window.location.replace(requiredUrl);
+      } catch {
+        window.location.href = requiredUrl;
+      }
+      return false;
+    };
+
+    if (!navigator.geolocation) return redirect();
+
+    if (navigator.permissions?.query) {
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' });
+        if (status?.state === 'denied') return redirect();
+        if (status?.state === 'granted') {
+          try {
+            localStorage.setItem('airlink_location_allowed', '1');
+          } catch {
+          }
+        }
+      } catch {
+      }
+    }
+
+    const result = await new Promise((resolve) => {
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ ok: true, pos }),
+          (err) => resolve({ ok: false, err }),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+        );
+      } catch (err) {
+        resolve({ ok: false, err });
+      }
+    });
+
+    if (result?.ok) {
+      try {
+        localStorage.setItem('airlink_location_allowed', '1');
+      } catch {
+      }
+      return true;
+    }
+
+    const code = Number(result?.err?.code);
+    if (code === 1) return redirect();
+    return true;
+  };
+
   let tries = 0;
 
   const attempt = () => {
@@ -2334,7 +2392,14 @@ const bootWithRetry = () => {
     window.setTimeout(attempt, 120);
   };
 
-  attempt();
+  (async () => {
+    const mapEl = document.getElementById('map');
+    if (mapEl) {
+      const ok = await ensureLocationPermission(mapEl);
+      if (!ok) return;
+    }
+    attempt();
+  })();
 };
 
 if (document.readyState === 'loading') {

@@ -71,6 +71,7 @@
             data-me-photo="{{ $mePhoto }}"
             data-me-initials="{{ $meInitials }}"
             data-me-share-location="{{ auth()->user()?->share_location ? '1' : '0' }}"
+            data-location-required-url="{{ route('location.required') }}"
             data-me-lat="{{ $meDevice?->last_lat }}"
             data-me-lng="{{ $meDevice?->last_lng }}"></div>
 
@@ -1403,6 +1404,8 @@
             const mePhotoSubmit = document.getElementById('mePhotoSubmit');
             mePhotoForm?.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
                 setButtonLoading(mePhotoSubmit, true);
 
                 try {
@@ -1422,6 +1425,16 @@
 
                     const url = String(data?.url || '');
                     if (url) {
+                        const preview = document.getElementById('mePhotoPreview');
+                        if (preview) {
+                            preview.innerHTML = '';
+                            const img = document.createElement('img');
+                            img.src = url;
+                            img.alt = 'Foto de perfil';
+                            img.className = 'al-profile-circle__img';
+                            preview.appendChild(img);
+                        }
+
                         const navImg = document.getElementById('alNavbarAvatarImg');
                         const navInitials = document.getElementById('alNavbarAvatarInitials');
                         if (navImg) {
@@ -1434,7 +1447,7 @@
                 } finally {
                     setButtonLoading(mePhotoSubmit, false);
                 }
-            });
+            }, true);
 
             const input = document.getElementById('mePhotoInput');
             const dropzone = document.getElementById('mePhotoDropzone');
