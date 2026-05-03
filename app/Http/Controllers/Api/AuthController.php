@@ -59,8 +59,10 @@ class AuthController extends Controller
             ],
         );
 
-        Auth::login($user);
-        $request->session()->regenerate();
+        if ($request->hasSession()) {
+            Auth::login($user);
+            $request->session()->regenerate();
+        }
 
         $token = $user->createToken('api')->plainTextToken;
 
@@ -78,9 +80,11 @@ class AuthController extends Controller
             $token->delete();
         }
 
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        if ($request->hasSession()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
 
         return response()->json([
             'ok' => true,
