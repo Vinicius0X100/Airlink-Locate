@@ -22,6 +22,7 @@ class User extends Authenticatable
         'photo',
         'airlink_locate_fisrt_entire',
         'share_location',
+        'fcm_token',
     ];
 
     protected $casts = [

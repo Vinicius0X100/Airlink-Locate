@@ -12,6 +12,7 @@ use App\Models\Invitation;
 use App\Models\UserConnection;
 use App\Services\SacratechAuthService;
 use App\Services\InvitationService;
+use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -19,6 +20,7 @@ class InvitationController extends Controller
 {
     public function __construct(
         private readonly InvitationService $invitationService,
+        private readonly FcmService $fcmService,
     ) {}
 
     public function index(Request $request)
@@ -106,6 +108,16 @@ class InvitationController extends Controller
         }
 
         $created = $this->invitationService->createInvitation($attrs);
+
+        // Send FCM push to invitee
+        $inviterName = (string) ($user->name ?? 'Usuário');
+        $pushTitle = 'Novo convite';
+        $pushBody = match($type) {
+            'family' => "{$inviterName} te convidou para uma família.",
+            'circle' => "{$inviterName} te convidou para um círculo.",
+            default => "{$inviterName} te convidou para conectar.",
+        };
+        $this->fcmService->sendNotification($invitee->id, $pushTitle, $pushBody);
 
         return response()->json([
             'invitation' => $created['invitation'],
@@ -259,6 +271,11 @@ class InvitationController extends Controller
             'created_at' => now(),
             'seen_at' => null,
         ]);
+
+        // Send FCM push to inviter that the invitation was accepted
+        $pushTitle = 'Convite aceito';
+        $pushBody = $message;
+        $this->fcmService->sendNotification($invitation->inviter_user_id, $pushTitle, $pushBody);
 
         return response()->json([
             'invitation' => $invitation->fresh()->load(['inviter', 'family', 'circle']),

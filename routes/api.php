@@ -15,6 +15,19 @@ Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth
 Route::get('/auth/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
 
 Route::post('/me/photo', [AuthController::class, 'uploadPhoto'])->middleware('auth:sanctum');
+Route::post('/me/fcm-token', function (Request $request) {
+    $data = $request->validate([
+        'fcm_token' => ['required', 'string'],
+    ]);
+
+    $user = $request->user();
+    $user->fcm_token = $data['fcm_token'];
+    $user->save();
+
+    return response()->json([
+        'ok' => true,
+    ]);
+})->middleware('auth:sanctum');
 
 Route::post('/families', [FamilyController::class, 'store'])->middleware('auth:sanctum');
 Route::post('/families/{family}/invite', [FamilyController::class, 'invite'])->middleware('auth:sanctum');
